@@ -23,11 +23,11 @@ struct player {
     double dx;
     double dy;
     int lives; //TODO: Assigne the lives to the exact player. Store the active player in the game_state. And using the activePlayer's value we update the corresponding player's attributes. ASK how to do this.
-}; 
+};
 
 struct wall {
     int x1;
-    int y1; 
+    int y1;
     int x2;
     int y2;
 };
@@ -56,7 +56,7 @@ struct time{
     int sec;
 };
 
-// Global variables 
+// Global variables
 struct wall Walls[MAX];
 struct player Hero = { 'J', 0, 0, 0, 0, MAX_HEALTH};
 struct player Chaser = { 'T', 1, 1, 0, 0, INT32_MAX}; //TODO: why can't  set the int values to NULL in the initialisation of the struct
@@ -75,30 +75,33 @@ int cheeseIndex;
 void read_wall(double X1, double Y1, double X2, double Y2, struct wall *wall)
 {
     wall->x1 = round(X1 * width);
-    wall->y1 = round(Y1 * height) + 4; // +4 is the offset for status bar 
+    wall->y1 = round(Y1 * height) + 4; // +4 is the offset for status bar
     wall->x2 = round(X2 * width);
-    wall->y2 = round(Y2 * height) + 4;  
+    wall->y2 = round(Y2 * height) + 4;
 }
 
 /*Calculated the step size dx and dy for the chaser.*/
 void initialise_chaser_movement(struct player *chaser)
 {
     //int rand_max = RAND_MAX;
-    double direction = rand() * M_PI * 2 / RAND_MAX; 
-    int randVar = (height + 10) + (rand()%(int)(height*10)); // mapped to 0.1 to 0.7 relative to screen height
-    float speed = (float)height/randVar; //(float)(rand()/(rand_max * rand_max));
+    double direction = rand() * M_PI * 2 / RAND_MAX;
+
+    // int randVar = (height + 10) + (rand()%(int)(height*10)); // mapped to 0.1 to 0.7 relative to screen height
+    // float speed = (float)height/randVar;
+
+    float speed = 0.15 + ((rand() % 100) / 100) * 0.8;
 
     chaser->dx = speed * cos(direction);
     chaser->dy = speed * sin(direction);
 }
 
 /*read_character() allocates character's starting position dynamically mapped to current screen. */
-void read_character (double x1, double y1, struct player *player)
+void read_character(double x1, double y1, struct player *player)
 {
     player->x = x1 * width;
     player->y = 4 + (y1 * height);
 
-    if(game_state.ActivePlayer == 'J' && player->character == 'T') 
+    if(game_state.ActivePlayer == 'J' && player->character == 'T')
     {
         initialise_chaser_movement(player);
     }
@@ -119,8 +122,8 @@ bool read_Map(FILE * stream)
         {
             if(command == 'J') { read_character(arg1, arg2, &Hero); }
             else if (command == 'T') { read_character(arg1, arg2, &Chaser); }
-            else { 
-                fprintf(stderr, "Error: Invalid Character defnition"); 
+            else {
+                fprintf(stderr, "Error: Invalid Character defnition");
                 return false;
             }
         }
@@ -135,8 +138,8 @@ bool read_Map(FILE * stream)
         {
             fprintf(stderr, "Error: Invalid Command found in the file");
             return false;
-        }  
-    } // End While 
+        }
+    } // End While
 
     return true;
 }
@@ -151,17 +154,17 @@ bool isValidLocation2(int next_x, int next_y)
     return true;
 }
 
-// THIS IS THE MATHEMATICAL WAYS OF CHECKING FOR WALLS BUT CONTAINS A SMALL BUG. DUE TO TIME CONSTRAINTS I HAVE RESORTED TO isValidLocation2() UNTIL ALL THE BUGS IN isValidLocation() CAN BE DEBUGGED 
+// THIS IS THE MATHEMATICAL WAYS OF CHECKING FOR WALLS BUT CONTAINS A SMALL BUG. DUE TO TIME CONSTRAINTS I HAVE RESORTED TO isValidLocation2() UNTIL ALL THE BUGS IN isValidLocation() CAN BE DEBUGGED
 // /*Checks if a number is between provided two values (inlcusive). Returns true if its is else false.*/
 // bool between(int y, int y1, int y2)
 // {
-//     // y1 <= y <= y2 OR   y2 <= y <= y1    check for both upward slope and downward slope 
+//     // y1 <= y <= y2 OR   y2 <= y <= y1    check for both upward slope and downward slope
 //     bool isBetween = ( y >= y1 && y <= y2) || (y<= y1 && y >=y2);
 //     draw_formatted(1, (width * 0.8), "%d  %d  %d  %d", y, y1, y2, isBetween);
 //     show_screen();
 //     return isBetween;
 
-    
+
 //     //return (( y >= y1 && y <= y2) || (y<= y1 && y >=y2)); //FIXME: Check this logic
 // }
 
@@ -187,7 +190,7 @@ bool isValidLocation2(int next_x, int next_y)
 //             if (next_x == Walls[i].x1) // Making sure we are somewhere on the vertical line
 //             {
 //                 if(between(next_y, Walls[i].y1, Walls[i].y2)) return false; // Finally checking if the next step is within the domains of the vertical wall
-//             } 
+//             }
 //         }
 //     }
 
@@ -198,7 +201,7 @@ bool isValidLocation2(int next_x, int next_y)
 void setup_cheese(int cheese_index) //TODO: Check if used if not REMOVE
 {
      do
-        {   
+        {
             cheeses[cheese_index].x = (rand() % width);
             cheeses[cheese_index].y = 4 + (rand() % height);
         } while (!isValidLocation2(cheeses[cheese_index].x, cheeses[cheese_index].y)); //;
@@ -223,7 +226,7 @@ void initalise_game_state()
     game_state.traps = 0;
     game_state.paused = false;
     game_state.gameOver = false;
-    game_state.lvl = 1; 
+    game_state.lvl = 1;
     game_state.ActivePlayer = 'J'; //Default player Jerry
     game_state.start_time = get_current_time();
     game_state.cheeseTimer = create_timer(2000);
@@ -233,15 +236,15 @@ void initalise_game_state()
 }
 
 /* setup() initialises the game based on the map file provided. It also defines game's state. */
-void setup (FILE * stream) 
+void setup (FILE * stream)
 {
     clear_screen();
 
-    initalise_game_state();    
+    initalise_game_state();
 
     bool read_successful = read_Map(stream);// Read the walls, Jerry and Tom loactions
-    srand(get_current_time()); // Initilise a random seed 
-    
+    srand(get_current_time()); // Initilise a random seed
+
     //Setup cheeses, Traps and Weapons
     //setup_cheese(); //TODO: REMOVE not used currently
 
@@ -280,7 +283,7 @@ void draw_game_stats()
     draw_formatted(round(width * 0.55), 0, "Lives: %d", lives());
     draw_formatted(round(width * 0.7), 0, "Player: %c", game_state.ActivePlayer);
     update_time();
-    draw_formatted(round(width * 0.85), 0, "Time: %02d:%02d", gameTime.min, gameTime.sec); //FIXME: Fix the print_time() 
+    draw_formatted(round(width * 0.85), 0, "Time: %02d:%02d", gameTime.min, gameTime.sec); //FIXME: Fix the print_time()
 
     draw_formatted(0, 2, "Cheese: %d", game_state.chesee);
     draw_formatted(round(width * 0.25), 2, "Traps: %d", game_state.traps);
@@ -297,7 +300,7 @@ void draw_game_stats()
 /*draw_walls() draw wallc number of walls on the screen using the Walls[] of type struct Wall. */
 void draw_walls()
 {
-    for (int i = 0; i < wallc; i++) { draw_line(Walls[i].x1, Walls[i].y1, Walls[i].x2, Walls[i].y2, WALL_Char); }    
+    for (int i = 0; i < wallc; i++) { draw_line(Walls[i].x1, Walls[i].y1, Walls[i].x2, Walls[i].y2, WALL_Char); }
 }
 
 /*draw_players() draw's players on the the screen play.*/
@@ -315,9 +318,9 @@ void draw_cheese()
     //     setup_cheese();
 
     //     for(int i = 0; i < game_state.chesee; i++)
-    //     { 
-    //         draw_char(cheeses[game_state.chesee].x, cheeses[game_state.chesee].y, 'C'); 
-    //     }    
+    //     {
+    //         draw_char(cheeses[game_state.chesee].x, cheeses[game_state.chesee].y, 'C');
+    //     }
 
     //     game_state.chesee++;
     // }
@@ -325,20 +328,20 @@ void draw_cheese()
     {
         if(cheeses[i].visible) draw_char(cheeses[i].x, cheeses[i].y, 'C'); //TODO: updated this to perform the test
     }
-    
+
     //show_screen();
 }
 
 /*draw_all() handles the drawing of all entities of the game.*/
 void draw_all()
 {
-    clear_screen(); 
+    clear_screen();
 
     draw_game_stats();
     draw_walls();
     draw_players();
     draw_cheese();
-    
+
     show_screen();
 }
 
@@ -370,8 +373,11 @@ void game_over()
 void update_hero(int key_code) //TODO: update update_hero() to incorporate the changes based upon the game_state.currerntPlayer value. Instead of Just sticking to the Hero character.
 {
     if ((key_code == 'a' && ((int)Hero.x) > 0) && \
-        ( isValidLocation2((int)round(Hero.x - 1), (int)round(Hero.y))) ) { Hero.x--; }  // Left 
-        
+        ( isValidLocation2((int)round(Hero.x - 1), (int)round(Hero.y))) ) 
+        { 
+            Hero.x--; 
+        }  // Left
+
     else if ((key_code == 'd' && ((int)Hero.x) < width) && \
             ( isValidLocation2((int)round(Hero.x + 1), (int)round(Hero.y)))) { Hero.x++; } // Right
 
@@ -381,7 +387,7 @@ void update_hero(int key_code) //TODO: update update_hero() to incorporate the c
     else if ((key_code == 's' && ((int)Hero.y) < (height + 4)) && \
             ( isValidLocation2((int)round(Hero.x), (int)round(Hero.y + 1))) ) { Hero.y++; } // Down
 
-   
+
 }
 
 /*Moves the chaser to the next VALID location. */
@@ -390,8 +396,8 @@ void move_chaser()
     bool bounced = false;
     // Predict the next step of the chaser
     int next_x = round(Chaser.x + Chaser.dx);
-    int next_y = round(Chaser.y + Chaser.dy); 
-    
+    int next_y = round(Chaser.y + Chaser.dy);
+
     //Check for collisions
     if(next_x == 0 || next_x == width || !(isValidLocation2(next_x, next_y)) ) //If on the left or the right border switch direction horizontally
     {
@@ -407,7 +413,7 @@ void move_chaser()
     }
 
     //TODO: Check for the Wall collisions and if collided then set the bounced to true.
-    
+
 
     if(!bounced)
     {
@@ -449,7 +455,7 @@ void update_cheese()
 
     for(int i = 0; i < MAX_cheeses; i++)
     {
-        if (cheeses[i].visible && collided(Hero.x, Hero.y, cheeses[i].x, cheeses[i].y))
+        if (cheeses[i].visible && collided(round(Hero.x), round(Hero.y), cheeses[i].x, cheeses[i].y))
         {
             game_state.score++;
             game_state.chesee--;
@@ -457,13 +463,13 @@ void update_cheese()
             cheeses[i].visible = false;
         }
     }
-    
+
 }
 
 /*pause_game() changes the state of the game to pause mode. */
 void pause_game()
 {
-    //do something    
+    //do something
 }
 
 /* update_state() updates the game's state according to the keyboard input. It handles the player movement, chaser movement and game pause funcationaliy.*/
@@ -496,7 +502,7 @@ int main(int argc, char * args[]) {
         if(mapFile != NULL)
         {
             setup(mapFile); //Set the game based on mapFile
-            while ( !game_state.gameOver ) 
+            while ( !game_state.gameOver )
             {
                 draw_all();
                 loop();
@@ -506,11 +512,11 @@ int main(int argc, char * args[]) {
         else
         {
             fprintf(stderr, "ERROR: Provided map file is empty. Please check the map file.");
-        }       
+        }
     }
     else
     {
         fprintf(stderr, "ERROR: No Map File Provided.");
-    }  
-    return 0;   
+    }
+    return 0;
 }
