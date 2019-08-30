@@ -200,14 +200,13 @@ bool isValidLocation2(int next_x, int next_y)
 // }
 
 /* Defines the corrdinates of the cheese respawn location. */
-void setup_cheese(int cheese_index) //TODO: Check if used if not REMOVE
+void setup_cheese(int cheese_index)
 {
      do
         {
             cheeses[cheese_index].x = (rand() % width);
             cheeses[cheese_index].y = 4 + (rand() % height);
-        } while (!isValidLocation2(cheeses[cheese_index].x, cheeses[cheese_index].y)); //;
-    cheeses[cheese_index].visible = true;
+        } while (!isValidLocation2(cheeses[cheese_index].x, cheeses[cheese_index].y));
 }
 
 /*Respawns the chaser at a new random location.*/
@@ -233,8 +232,12 @@ void initalise_game_state()
     game_state.start_time = get_current_time();
     game_state.cheeseTimer = create_timer(2000);
 
-    for(int i = 0; i < 5; i++) cheeses[i].visible = false;
-    cheeseIndex = 0;
+    for(int i = 0; i < 5; i++) 
+    {
+        setup_cheese(i);
+        cheeses[i].visible = false;
+    }
+    cheeseIndex = 0; //TODO: REMOVE if not used
 }
 
 /* setup() initialises the game based on the map file provided. It also defines game's state. */
@@ -360,8 +363,7 @@ void game_over()
 
 /* update_her0() updates the hero's position based on the keyboard input. Keryboard input: a => Left,  d => Right,  w => Up,  s => Down.*/
 void update_hero(int key_code) //TODO: update update_hero() to incorporate the changes based upon the game_state.currerntPlayer value. Instead of Just sticking to the Hero character.
-{
-
+{   
     if ((key_code == 'a' && ((int)Hero.x) > 0) && \
         ( isValidLocation2((int)round(Hero.x - 1), (int)round(Hero.y))) )
         {
@@ -376,9 +378,6 @@ void update_hero(int key_code) //TODO: update update_hero() to incorporate the c
 
     else if ((key_code == 's' && ((int)Hero.y) < (height + 4)) && \
             ( isValidLocation2((int)round(Hero.x), (int)round(Hero.y + 1))) ) { Hero.y++; } // Down
-
-
-
 }
 
 /*Moves the chaser to the next VALID location. */
@@ -402,9 +401,6 @@ void move_chaser()
         initialise_chaser_movement( &Chaser );
         bounced = true;
     }
-
-    //TODO: Check for the Wall collisions and if collided then set the bounced to true.
-
 
     if(!bounced)
     {
@@ -436,22 +432,39 @@ void update_chaser(int key_code)
 /*update_cheese() checks if the player has captured the cheese (by colliding into it) and updates the score accordingly. It also respons new cheese upon successful collision.*/
 void update_cheese()
 {
+    /*
+        check if timer is expired & if there are less than 5 cheeses on screen
+            make the next cheese available. 
+        
+        for each cheese that is visible check if the 
+            
+    */
+
+   //Draw cheese if the timer has expired and there are less than 5 cheeses on screen
     if(timer_expired(game_state.cheeseTimer) && game_state.chesee < 5) //Drop cheese every 2 seconds
     {
-        setup_cheese(cheeseIndex);
-        game_state.chesee++;
-        cheeseIndex++;
-        timer_reset(game_state.cheeseTimer); // Reset the timer
+        for (int i = 0; i < MAX_cheeses; i++)
+        {
+            if(!cheeses[i].visible) 
+            {
+                cheeses[i].visible = true;
+                game_state.chesee++;
+                timer_reset(game_state.cheeseTimer); // Reset the timer
+                break;
+            }
+        }
     }
 
+    //Check if the Hero collides with any of the cheeses
     for(int i = 0; i < MAX_cheeses; i++)
     {
         if (cheeses[i].visible && collided(round(Hero.x), round(Hero.y), cheeses[i].x, cheeses[i].y))
         {
             game_state.score++;
             game_state.chesee--;
-
+            setup_cheese(i); //Reset the cheese for next round
             cheeses[i].visible = false;
+            break;
         }
     }
 
