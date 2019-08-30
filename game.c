@@ -85,10 +85,6 @@ void initialise_chaser_movement(struct player *chaser)
 {
     //int rand_max = RAND_MAX;
     double direction = rand() * M_PI * 2 / RAND_MAX;
-
-    // int randVar = (height + 10) + (rand()%(int)(height*10)); // mapped to 0.1 to 0.7 relative to screen height
-    // float speed = (float)height/randVar;
-
     float speed = 0.15 + ((rand() % 100) / 100) * 0.8;
 
     chaser->dx = speed * cos(direction);
@@ -101,10 +97,16 @@ void read_character(double x1, double y1, struct player *player)
     player->x = x1 * width;
     player->y = 4 + (y1 * height);
 
-    if(game_state.ActivePlayer == 'J' && player->character == 'T')
+    if(game_state.ActivePlayer == 'J')
     {
-        initialise_chaser_movement(player);
+        if (player->character == 'J')
+        {
+            player->x = round(player->x); // Ensure the doubles are rounded for an even cordinated system
+            player->y = round(player->y);
+        }
+        else if (player->character == 'T') initialise_chaser_movement(player);
     }
+
 }
 
 /* read_Map() function takes in a stream of File pointer and read's all its values, until EOF. read_Map() initialises the characters, walls, chesee, traps and Weapons. It return a bool as a form of quick validation check. */
@@ -313,23 +315,10 @@ void draw_players()
 /*draw_cheese() draw cheese on screen at random(x,y) coordinates. It draw at max only 5 cheeses on screen at rate of 1 cheese per 2 seconds.*/
 void draw_cheese()
 {
-    // if(game_state.chesee < 6)
-    // {
-    //     setup_cheese();
-
-    //     for(int i = 0; i < game_state.chesee; i++)
-    //     {
-    //         draw_char(cheeses[game_state.chesee].x, cheeses[game_state.chesee].y, 'C');
-    //     }
-
-    //     game_state.chesee++;
-    // }
-    for(int i = 0; i < game_state.chesee; i++)
+    for(int i = 0; i < MAX_cheeses; i++)
     {
         if(cheeses[i].visible) draw_char(cheeses[i].x, cheeses[i].y, 'C'); //TODO: updated this to perform the test
     }
-
-    //show_screen();
 }
 
 /*draw_all() handles the drawing of all entities of the game.*/
@@ -372,10 +361,11 @@ void game_over()
 /* update_her0() updates the hero's position based on the keyboard input. Keryboard input: a => Left,  d => Right,  w => Up,  s => Down.*/
 void update_hero(int key_code) //TODO: update update_hero() to incorporate the changes based upon the game_state.currerntPlayer value. Instead of Just sticking to the Hero character.
 {
+
     if ((key_code == 'a' && ((int)Hero.x) > 0) && \
-        ( isValidLocation2((int)round(Hero.x - 1), (int)round(Hero.y))) ) 
-        { 
-            Hero.x--; 
+        ( isValidLocation2((int)round(Hero.x - 1), (int)round(Hero.y))) )
+        {
+            Hero.x--;
         }  // Left
 
     else if ((key_code == 'd' && ((int)Hero.x) < width) && \
@@ -386,6 +376,7 @@ void update_hero(int key_code) //TODO: update update_hero() to incorporate the c
 
     else if ((key_code == 's' && ((int)Hero.y) < (height + 4)) && \
             ( isValidLocation2((int)round(Hero.x), (int)round(Hero.y + 1))) ) { Hero.y++; } // Down
+
 
 
 }
