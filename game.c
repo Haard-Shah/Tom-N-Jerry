@@ -43,6 +43,8 @@ struct game{
     double start_time;
     timer_id cheeseTimer;
     bool gameOver;
+    double pause_time;
+    double unpause_time;
 };
 
 struct object{
@@ -231,6 +233,7 @@ void initalise_game_state()
     game_state.ActivePlayer = 'J'; //Default player Jerry
     game_state.start_time = get_current_time();
     game_state.cheeseTimer = create_timer(2000);
+    game_state.pause_time = 0;
 
     for(int i = 0; i < 5; i++) 
     {
@@ -268,12 +271,26 @@ int lives()
 
 void update_time()
 {
-    double currentTime = get_current_time();
+    if(!game_state.paused)
+    {
+        double currentTime = get_current_time();
+        double difference;
+        if((game_state.unpause_time - game_state.pause_time) > 0)
+        {
+            double offset = (game_state.unpause_time - game_state.pause_time);
+            game_state.start_time += offset;
+            game_state.pause_time = 0;
+            game_state.unpause_time = 0;
+        }
+        difference = (currentTime - game_state.start_time);
+        // else difference = (currentTime - game_state.start_time); //Difference is in seconds
 
-    double difference = (currentTime - game_state.start_time); //Difference is in seconds
-
-    gameTime.min = (int)difference/60;
-    gameTime.sec = (int)round(difference - (gameTime.min * 60)); //Convert the remaining decimal minutes to seconds
+        gameTime.min = (int)difference/60; // cast and truncate to get the minutes part 
+        gameTime.sec = (int)round(difference - (gameTime.min * 60)); //Convert the remaining decimal minutes to seconds
+        //TODO: floor the sec to get it to go upto 59 but not 60
+    }
+    //TODO: add code for the paused mode
+    
 }
 
 // ----------------------------------------------------------------------------------
@@ -392,7 +409,7 @@ void move_chaser()
     if(next_x == 0 || next_x == width || !(isValidLocation2(next_x, next_y)) ) //If on the left or the right border switch direction horizontally
     {
         // Chaser.dx = -Chaser.dx;
-        initialise_chaser_movement( &Chaser );
+        initialise_chaser_movement( &Chaser );  
         bounced = true;
     }
     if (next_y == 3 || next_y == (height + 5) || !(isValidLocation2(next_x, next_y))) //if on the top or bottom border switch direction vertically
@@ -412,7 +429,7 @@ void move_chaser()
 /*Handles the movement of the chaser player.*/
 void update_chaser(int key_code)
 {
-    if (key_code < 0)
+    if (key_code < 0 && !game_state.paused)
     {
         move_chaser();
     }
@@ -432,16 +449,11 @@ void update_chaser(int key_code)
 /*update_cheese() checks if the player has captured the cheese (by colliding into it) and updates the score accordingly. It also respons new cheese upon successful collision.*/
 void update_cheese()
 {
-    /*
-        check if timer is expired & if there are less than 5 cheeses on screen
-            make the next cheese available. 
-        
-        for each cheese that is visible check if the 
-            
-    */
+    // If more than 5 cheeses have been eaten open the door for the next level. 
+    //TODO: Implement the door funcitionality
 
-   //Draw cheese if the timer has expired and there are less than 5 cheeses on screen
-    if(timer_expired(game_state.cheeseTimer) && game_state.chesee < 5) //Drop cheese every 2 seconds
+    //Draw cheese if the timer has expired and there are less than 5 cheeses on screen
+    if(timer_expired(game_state.cheeseTimer) && game_state.chesee < 5 && !game_state.paused) //Drop cheese every 2 seconds
     {
         for (int i = 0; i < MAX_cheeses; i++)
         {
@@ -449,7 +461,7 @@ void update_cheese()
             {
                 cheeses[i].visible = true;
                 game_state.chesee++;
-                timer_reset(game_state.cheeseTimer); // Reset the timer
+                timer_reset(game_state.cheeseTimer); // Reset the timerD
                 break;
             }
         }
@@ -473,14 +485,25 @@ void update_cheese()
 /*pause_game() changes the state of the game to pause mode. */
 void pause_game()
 {
-    //do something
+    if(!game_state.paused)
+    {
+        game_state.paused = true;
+        game_state.pause_time = get_current_time();
+    }
+    else
+    {
+        game_state.paused = false;
+        game_state.unpause_time = get_current_time();
+    }
+    
+    //game_state.paused = !game_state.paused;
 }
 
 /* update_state() updates the game's state according to the keyboard input. It handles the player movement, chaser movement and game pause funcationaliy.*/
 void update_state(int key_code)
 {
     // Check Pause
-    if (key_code == 'p') { pause_game(); }
+    if (key_code == 'p') { pause_game(); } //TODO: check with pause_game() function.
     else
     {
         update_hero(key_code);
