@@ -23,6 +23,8 @@ struct player {
     double dx;
     double dy;
     int lives; //TODO: Assigne the lives to the exact player. Store the active player in the game_state. And using the activePlayer's value we update the corresponding player's attributes. ASK how to do this.
+    double reset_x;
+    double reset_y;
 };
 
 struct wall {
@@ -37,7 +39,8 @@ struct game{
     int weapons;
     int traps;
     bool paused;
-    int score;
+    int cheeseEaten;
+    int fireworksHit;
     int lvl;
     char ActivePlayer;
     double start_time;
@@ -65,9 +68,10 @@ struct player Chaser = { 'T', 1, 1, 0, 0, INT32_MAX}; //TODO: why can't  set the
 struct game game_state;
 struct object cheeses[MAX_cheeses];
 struct object traps[MAX_traps];
+struct object door;
 struct time gameTime;
 int wallc = 0;
-int cheeseIndex;
+timer_id cheeseTimerTemp;
 
 
 // ---------------------------------- READ FUNCTIONS ----------------------------------------------
@@ -109,6 +113,9 @@ void read_character(double x1, double y1, struct player *player)
         else if (player->character == 'T') initialise_chaser_movement(player);
     }
 
+    //Store each player's reset_x and reset_y location 
+    player->reset_x = player->x;
+    player->reset_y = player->y;
 }
 
 /* read_Map() function takes in a stream of File pointer and read's all its values, until EOF. read_Map() initialises the characters, walls, chesee, traps and Weapons. It return a bool as a form of quick validation check. */
@@ -150,7 +157,11 @@ bool read_Map(FILE * stream)
 
 // ------------------------- SETUP FUNCTIONS -------------------------------------------
 
-bool isValidLocation2(int next_x, int next_y)
+/*
+    Check if the supplied coordiantes are a valid location to move on to. 
+    Returns true if and only if its is a valid location.
+*/
+bool isValidLocation2(int next_x, int next_y ) //char validLocationDeliminator //TODO: updated this so more than one non-valid location can be deliminated using a char[] argv and argc style 
 {
     char character = scrape_char(next_x, next_y);
 
@@ -158,48 +169,54 @@ bool isValidLocation2(int next_x, int next_y)
     return true;
 }
 
-// THIS IS THE MATHEMATICAL WAYS OF CHECKING FOR WALLS BUT CONTAINS A SMALL BUG. DUE TO TIME CONSTRAINTS I HAVE RESORTED TO isValidLocation2() UNTIL ALL THE BUGS IN isValidLocation() CAN BE DEBUGGED
-// /*Checks if a number is between provided two values (inlcusive). Returns true if its is else false.*/
-// bool between(int y, int y1, int y2)
-// {
-//     // y1 <= y <= y2 OR   y2 <= y <= y1    check for both upward slope and downward slope
-//     bool isBetween = ( y >= y1 && y <= y2) || (y<= y1 && y >=y2);
-//     draw_formatted(1, (width * 0.8), "%d  %d  %d  %d", y, y1, y2, isBetween);
-//     show_screen();
-//     return isBetween;
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+THIS IS THE MATHEMATICAL WAYS OF CHECKING FOR WALLS BUT CONTAINS A SMALL BUG. DUE TO TIME CONSTRAINTS I HAVE RESORTED TO isValidLocation2() UNTIL ALL THE BUGS IN isValidLocation() CAN BE DEBUGGED
+
+//Checks if a number is between provided two values (inlcusive). Returns true if its is else false.
+bool between(int y, int y1, int y2)
+{
+    // y1 <= y <= y2 OR   y2 <= y <= y1    check for both upward slope and downward slope
+    bool isBetween = ( y >= y1 && y <= y2) || (y<= y1 && y >=y2);
+    draw_formatted(1, (width * 0.8), "%d  %d  %d  %d", y, y1, y2, isBetween);
+    show_screen();
+    return isBetween;
 
 
-//     //return (( y >= y1 && y <= y2) || (y<= y1 && y >=y2)); //FIXME: Check this logic
-// }
+    //return (( y >= y1 && y <= y2) || (y<= y1 && y >=y2)); //FIXME: Check this logic
+}
 
 
 
-// /*checks if the location of the placement is valid. i.e. not on walls.*/
-// bool isValidLocation(int next_x, int next_y)
-// {
-//     for(int i = 0; i < wallc; i++)
-//     {
-//         // ONLY CHECK FOR HORIZONTAL WALLS CURRENTLY  //FIXME: Check the logic below
+//checks if the location of the placement is valid. i.e. not on walls.
+bool isValidLocation(int next_x, int next_y)
+{
+    for(int i = 0; i < wallc; i++)
+    {
+        // ONLY CHECK FOR HORIZONTAL WALLS CURRENTLY  //FIXME: Check the logic below
 
-//         if (abs(Walls[i].x2 - Walls[i].x1) != 0) // True means there is no change in x and hence is a horizontal line
-//         {
-//             if (next_y == Walls[i].y1) // Making sure we are somewhere on the horizontal line
-//             {
-//                 draw_char(next_x, next_y, '!');
-//                if(between(next_y, Walls[i].y1, Walls[i].y2)) return false; // Finally checking if the next step is witin the domains of the horizontal wall
-//             }
-//         }
-//         else if (abs(Walls[i].y2 - Walls[i].y1) != 0) // True would mean x is constant all across and hence a vertical line wall
-//         {
-//             if (next_x == Walls[i].x1) // Making sure we are somewhere on the vertical line
-//             {
-//                 if(between(next_y, Walls[i].y1, Walls[i].y2)) return false; // Finally checking if the next step is within the domains of the vertical wall
-//             }
-//         }
-//     }
+        if (abs(Walls[i].x2 - Walls[i].x1) != 0) // True means there is no change in x and hence is a horizontal line
+        {
+            if (next_y == Walls[i].y1) // Making sure we are somewhere on the horizontal line
+            {
+                draw_char(next_x, next_y, '!');
+               if(between(next_y, Walls[i].y1, Walls[i].y2)) return false; // Finally checking if the next step is witin the domains of the horizontal wall
+            }
+        }
+        else if (abs(Walls[i].y2 - Walls[i].y1) != 0) // True would mean x is constant all across and hence a vertical line wall
+        {
+            if (next_x == Walls[i].x1) // Making sure we are somewhere on the vertical line
+            {
+                if(between(next_y, Walls[i].y1, Walls[i].y2)) return false; // Finally checking if the next step is within the domains of the vertical wall
+            }
+        }
+    }
 
-//     return true;
-// }
+    return true;
+} 
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+*/
+
+
 
 /* Defines the corrdinates of the cheese respawn location. */
 void setup_cheese(int cheese_index)
@@ -212,20 +229,38 @@ void setup_cheese(int cheese_index)
 }
 
 /*Respawns the chaser at a new random location.*/
-void setup_chaser()
+void reset_players()
 {
-    Chaser.x = (rand() % width);
-    Chaser.y = 4 + (rand() % height);
+    //Reset Jerry
+    Hero.x = Hero.reset_x;
+    Hero.y = Hero.reset_y;
 
+    //Reset Tom
+    Chaser.x = Chaser.reset_x;
+    Chaser.y = Chaser.reset_y;
     initialise_chaser_movement(&Chaser); //Set new velocity
+}
+
+/*Sets up door's location at a valid door location.*/
+void setup_door()
+{
+    do
+    {
+        door.x = round(rand() % width);
+        door.y = 4 + (rand() % height);
+    } while (!isValidLocation2(door.x, door.y));
+
+    door.visible = true;
+    
 }
 
 /*Initialises the game global variables, default character and game start time.*/
 void initalise_game_state()
 {
     game_state.chesee = 0;
-    game_state.score = 0;
+    game_state.cheeseEaten = 0;
     game_state.weapons = 0;
+    game_state.fireworksHit = 0;
     game_state.traps = 0;
     game_state.paused = false;
     game_state.gameOver = false;
@@ -234,13 +269,13 @@ void initalise_game_state()
     game_state.start_time = get_current_time();
     game_state.cheeseTimer = create_timer(2000);
     game_state.pause_time = 0;
+    door.visible = false;
 
     for(int i = 0; i < 5; i++) 
     {
         setup_cheese(i);
         cheeses[i].visible = false;
     }
-    cheeseIndex = 0; //TODO: REMOVE if not used
 }
 
 /* setup() initialises the game based on the map file provided. It also defines game's state. */
@@ -301,7 +336,7 @@ void update_time()
 void draw_game_stats()
 {
     draw_formatted(0, 0, "Student Number: N10235779");
-    draw_formatted(round(width * 0.38), 0, "Score: %3d", game_state.score);
+    draw_formatted(round(width * 0.38), 0, "Score: %3d", (game_state.cheeseEaten + game_state.fireworksHit));
     draw_formatted(round(width * 0.55), 0, "Lives: %d", lives());
     draw_formatted(round(width * 0.7), 0, "Player: %c", game_state.ActivePlayer);
     update_time();
@@ -341,6 +376,12 @@ void draw_cheese()
     }
 }
 
+/**/
+void draw_door()
+{
+    if(door.visible) draw_char(door.x, door.y, 'X');
+}
+
 /*draw_all() handles the drawing of all entities of the game.*/
 void draw_all()
 {
@@ -350,6 +391,7 @@ void draw_all()
     draw_walls();
     draw_players();
     draw_cheese();
+    draw_door();
 
     show_screen();
 }
@@ -375,7 +417,30 @@ int h(int m, int c, int x)
 /*Displays the game over message and waits for a key input to exit the game.*/
 void game_over()
 {
-    //do something
+    clear_screen();
+
+    const char *message[] = {
+        "Game Over!",
+        "You %s",
+        "Press R to restart the game or Press Q to exit..."
+    };
+
+    const int rows = 2;
+
+    for (int i = 0; i < rows; i++) {
+        // Draw message in middle of screen.
+        int len = strlen(message[i]);
+        int x = (screen_width() - len) / 2;
+        int y = (screen_height() - rows) / 2 + i;
+        draw_formatted(x, y, message[i]);
+    }
+
+    show_screen();
+
+    while (get_char() > 0) {}
+    wait_char();
+
+    //game_state.gameOver = true;
 }
 
 /* update_her0() updates the hero's position based on the keyboard input. Keryboard input: a => Left,  d => Right,  w => Up,  s => Down.*/
@@ -437,21 +502,19 @@ void update_chaser(int key_code)
     if (collided(Hero.x, Hero.y, Chaser.x, Chaser.y))
         {
             Hero.lives--;
+            //TODO: reset both players' location to original location
 
             if(Hero.lives <= 0)
             {
-                game_over();
+                game_state.gameOver = true;
             }
-            setup_chaser();
+            else reset_players();
         }
 }
 
 /*update_cheese() checks if the player has captured the cheese (by colliding into it) and updates the score accordingly. It also respons new cheese upon successful collision.*/
 void update_cheese()
 {
-    // If more than 5 cheeses have been eaten open the door for the next level. 
-    //TODO: Implement the door funcitionality
-
     //Draw cheese if the timer has expired and there are less than 5 cheeses on screen
     if(timer_expired(game_state.cheeseTimer) && game_state.chesee < 5 && !game_state.paused) //Drop cheese every 2 seconds
     {
@@ -461,7 +524,7 @@ void update_cheese()
             {
                 cheeses[i].visible = true;
                 game_state.chesee++;
-                timer_reset(game_state.cheeseTimer); // Reset the timerD
+                timer_reset(game_state.cheeseTimer); // Reset the timer
                 break;
             }
         }
@@ -472,14 +535,48 @@ void update_cheese()
     {
         if (cheeses[i].visible && collided(round(Hero.x), round(Hero.y), cheeses[i].x, cheeses[i].y))
         {
-            game_state.score++;
+            game_state.cheeseEaten++;
             game_state.chesee--;
-            setup_cheese(i); //Reset the cheese for next round
+            setup_cheese(i); //reinitialise the cheese for next round
             cheeses[i].visible = false;
             break;
         }
     }
 
+}
+
+/*Checks if the Jerry has eaten >=5 cheese then opens the door to next level.*/
+void update_door()
+{
+    if(game_state.cheeseEaten > 4 && !door.visible)
+    {
+        setup_door();
+    }
+    else
+    {
+        if(collided((int)Hero.x, (int)Hero.y, door.x, door.y))
+        {
+            clear_screen();
+
+            const char *message[] = {
+                "YOU WIN!",
+                "Press Q to exit"
+            };
+
+            const int rows = 2;
+
+            for (int i = 0; i < rows; i++) 
+            {
+                // Draw message in middle of screen.
+                int len = strlen(message[i]);
+                int x = (screen_width() - len) / 2;
+                int y = (screen_height() - rows) / 2 + i;
+                draw_formatted(x, y, message[i]);
+            }
+
+            show_screen();
+        }
+    }
 }
 
 /*pause_game() changes the state of the game to pause mode. */
@@ -489,26 +586,29 @@ void pause_game()
     {
         game_state.paused = true;
         game_state.pause_time = get_current_time();
+        cheeseTimerTemp = game_state.cheeseTimer; //Hold the cheese timer value at pause time for later timer resuming
     }
     else
     {
         game_state.paused = false;
         game_state.unpause_time = get_current_time();
+        game_state.cheeseTimer = cheeseTimerTemp; //Resume the cheese timer
     }
-    
-    //game_state.paused = !game_state.paused;
 }
 
 /* update_state() updates the game's state according to the keyboard input. It handles the player movement, chaser movement and game pause funcationaliy.*/
 void update_state(int key_code)
 {
     // Check Pause
-    if (key_code == 'p') { pause_game(); } //TODO: check with pause_game() function.
+    if (key_code == 'p') { pause_game(); }
     else
     {
         update_hero(key_code);
         update_chaser(key_code);
         update_cheese(key_code);
+        update_door();
+        
+        if(game_state.gameOver) game_over();
     }
 }
 
@@ -524,12 +624,13 @@ int main(int argc, char * args[]) {
     //Check if a map file has been provided
     if (argc > 1)
     {
+        int lvl = 1;
         setup_screen();
-        FILE * mapFile = fopen(args[1], "r");
+        FILE * mapFile = fopen(args[lvl], "r");
         if(mapFile != NULL)
         {
             setup(mapFile); //Set the game based on mapFile
-            while ( !game_state.gameOver )
+            while (game_state.lvl == lvl) //!game_state.gameOver
             {
                 draw_all();
                 loop();
