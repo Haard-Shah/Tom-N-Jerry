@@ -14,7 +14,7 @@
 #define MAX_traps 5
 #define MAX_weapons 5
 #define M_PI 3.14159265358979323846
-#define MAX_HEALTH 5
+#define MAX_HEALTH 1
 #define TIMER 2000
 #define CHEESE_IMG 'C'
 #define TRAP_IMG 'M'
@@ -58,7 +58,6 @@ struct game{
     bool paused;
     int cheeseEaten;
     int fireworksHit;
-    int lvl;
     char ActivePlayer;
     double start_time;
     timer_id cheeseTimer;
@@ -90,7 +89,9 @@ struct object door;
 struct time gameTime;
 int wallc = 0;
 timer_id cheeseTimerTemp;
-timer_id trap_timer; //TODO: CHECK it's existance
+timer_id trapTimerTemp;
+int Num_rooms;
+int lvl;
 
 
 // ---------------------------------- READ FUNCTIONS ----------------------------------------------
@@ -240,11 +241,12 @@ bool isValidLocation(int next_x, int next_y)
 /* Defines the corrdinates of the cheese respawn location. */
 void setup_cheese(int cheese_index)
 {
+    // TODO: FIX: there is a bug that allow it to be placed on a wall. Debug it
      do
         {
             cheeses[cheese_index].x = (rand() % width);
             cheeses[cheese_index].y = 4 + (rand() % height);
-        } while (!isValidLocation2(cheeses[cheese_index].x, cheeses[cheese_index].y));
+        } while (!isValidLocation2(cheeses[cheese_index].x, cheeses[cheese_index].y)); 
 }
 
 /* Defines the coordinates of the trap respawn location. Checks if the spaw location is valid */
@@ -306,16 +308,18 @@ void setup_door()
 /*Initialises the game global variables, default character and game start time.*/
 void initalise_game_state()
 {
-    game_state.chesee = 0;
-    game_state.cheeseEaten = 0;
-    game_state.weapons = 0;
+    if (lvl == 1)
+    {
+        game_state.chesee = 0;
+        game_state.cheeseEaten = 0;
+        game_state.weapons = 0;
+        game_state.start_time = get_current_time();
+    }
     game_state.fireworksHit = 0;
     game_state.traps = 0;
     game_state.paused = false;
     game_state.gameOver = false;
-    game_state.lvl = 1;
     game_state.ActivePlayer = 'J'; //Default player Jerry
-    game_state.start_time = get_current_time();
     game_state.cheeseTimer = create_timer(TIMER);
     game_state.trapTimer = create_timer(TIMER);
     game_state.pause_time = 0;
@@ -346,12 +350,10 @@ void setup (FILE * stream)
     bool read_successful = read_Map(stream);// Read the walls, Jerry and Tom loactions
     srand(get_current_time()); // Initilise a random seed
 
-    //Setup cheeses, Traps and Weapons
-    //setup_cheese(); //TODO: REMOVE not used currently
-
-    if (!read_successful) // Initilise the game state
+    if (!read_successful)
     {
         fprintf(stderr, "ERROR: Invalid format in Map File.");
+        game_state.gameOver = true;
     }
 } // End setup()
 
@@ -381,33 +383,41 @@ void update_time()
         gameTime.min = (int)difference/60; // cast and truncate to get the minutes part 
         gameTime.sec = (int)round(difference - (gameTime.min * 60)); //Convert the remaining decimal minutes to seconds
         //TODO: floor the sec to get it to go upto 59 but not 60
-    }
-    //TODO: add code for the paused mode
-    
+    }    
 }
 
-// ----------------------------------------------------------------------------------
+// ------------------------------------ SUPPORTING FUNCTIONS ----------------------------------------------
+/* Returns the total score of the current game state.  */
+int score()
+{
+    return (game_state.cheeseEaten + game_state.fireworksHit);
+}
 
+/*Reset's the game to level (room) 1.*/
+void reset_game()
+{
+    lvl = 1; //Reset to first room
+    clear_screen();
+    game_state.gameOver = false; // Begin play
+}
 // ------------------------- DRAW FUNCTIONS -----------------------------------------
 
 /*draw_game_stats() draws all the game stats in the game header area. List inludes: Score, Lives, Player, Time, Cheese, Traps, Fireworks and Level.*/
 void draw_game_stats()
 {
     draw_formatted(0, 0, "Student Number: N10235779");
-    draw_formatted(round(width * 0.38), 0, "Score: %3d", (game_state.cheeseEaten + game_state.fireworksHit));
+    draw_formatted(round(width * 0.38), 0, "Score: %3d", score());
     draw_formatted(round(width * 0.55), 0, "Lives: %d", lives());
     draw_formatted(round(width * 0.7), 0, "Player: %c", game_state.ActivePlayer);
     update_time();
-    draw_formatted(round(width * 0.85), 0, "Time: %02d:%02d", gameTime.min, gameTime.sec); //FIXME: Fix the print_time()
+    draw_formatted(round(width * 0.85), 0, "Time: %02d:%02d", gameTime.min, gameTime.sec);
 
     draw_formatted(0, 2, "Cheese: %d", game_state.chesee);
     draw_formatted(round(width * 0.25), 2, "Traps: %d", game_state.traps);
     draw_formatted(round(width * 0.45), 2, "Fireworks: %d", game_state.weapons);
-    draw_formatted(round(width * 0.65), 2, "Level: %d", game_state.lvl);
-    draw_formatted(round(width * 0.8), 2, "x: %d", (int)round(Hero.x));
-    draw_formatted(round(width * 0.9), 2, "y: %d", (int)round(Hero.y));
-
-    // draw_formatted(round(width * 0.9), 4, "dy: %lf", Chaser.dy); //TODO: REMOVE
+    draw_formatted(round(width * 0.65), 2, "Level: %d", lvl);
+    draw_formatted(round(width * 0.8), 2, "x: %d", (int)round(Hero.x)); //TODO: REMOVE
+    draw_formatted(round(width * 0.9), 2, "y: %d", (int)round(Hero.y)); //TODO: REMOVE
 
     draw_line(0, 3, width, 3, '-');
 }
@@ -506,34 +516,59 @@ bool collided(int x1, int y1, int x2, int y2)
 // ------------------------ UPDATE FUNCTIONS --------------------------------------------------
 
 /*Displays the game over message and waits for a key input to exit the game.*/
-void game_over()
+void game_over(bool *exitToTerminal)
 {
+    if(lvl < Num_rooms && Hero.lives > 0)
+    {
+        lvl++;
+        clear_screen();
+        game_state.gameOver = false;
+        return; // Proceed to the next room
+    }
+
     clear_screen();
 
-    const char *message[] = {
-        "Game Over!",
-        "You %s",
-        "Press R to restart the game or Press Q to exit..."
+    char *message[] = {
+        (Hero.lives <= 0? "Game Over!" : "YOU WIN!"),
+        "_", // Place holder text
+        "Press 'r' to restart the game or Press 'q' to exit..."
     };
 
-    const int rows = 2;
+    //snprintf(message[2], 19, "Score: %3d", score()); // Append the correct score
+    
 
-    for (int i = 0; i < rows; i++) {
+    for (int i = 0; i < len(message); i++) {
         // Draw message in middle of screen.
         int len = strlen(message[i]);
         int x = (screen_width() - len) / 2;
-        int y = (screen_height() - rows) / 2 + i;
+        int y = (screen_height() - len(message)) / 2 + i;
         draw_formatted(x, y, message[i]);
     }
 
     show_screen();
-
-    while (get_char() > 0) {}
-    wait_char();
+    
+    
+    while (true)
+    {
+        char key_code = get_char();
+        if (key_code == 'r')
+        {
+            reset_game();
+            break;
+        }
+        else if (key_code == 'q')
+        {
+            // Exit to the terminal gracefully
+            cleanup_screen();
+            *exitToTerminal = true;
+            break;
+        }
+    } 
+    // wait_char();
 }
 
 /* update_her0() updates the hero's position based on the keyboard input. Keryboard input: a => Left,  d => Right,  w => Up,  s => Down.*/
-void update_hero(int key_code) //TODO: update update_hero() to incorporate the changes based upon the game_state.currerntPlayer value. Instead of Just sticking to the Hero character.
+void update_hero(int key_code) //TODO: update update_hero() to incorporate the changes based upon the game_state.currerntPlayer value. Instead of Just sticking to the Jerry character.
 {   
     if ((key_code == 'a' && ((int)Hero.x) > 0) && \
         ( isValidLocation2((int)round(Hero.x - 1), (int)round(Hero.y))) )
@@ -611,7 +646,11 @@ void update_traps(int key)
         }
     }
 
-    if(Hero.lives <= 0) game_state.gameOver = true; // Finally check Hero's health 
+    if(Hero.lives <= 0) 
+    {
+        clear_screen();
+        game_state.gameOver = true; // Finally check Hero's health 
+    }
 }
 
 /*Handles the movement of the chaser player and automatic trap deployments.*/
@@ -626,10 +665,10 @@ void update_chaser(int key_code)
     if (collided(Hero.x, Hero.y, Chaser.x, Chaser.y))
         {
             Hero.lives--;
-            //TODO: reset both players' location to original location
 
             if(Hero.lives <= 0)
             {
+                clear_screen();
                 game_state.gameOver = true;
             }
             else reset_players();
@@ -680,24 +719,7 @@ void update_door()
         if(collided((int)Hero.x, (int)Hero.y, door.x, door.y))
         {
             clear_screen();
-
-            const char *message[] = {
-                "YOU WIN!",
-                "Press Q to exit"
-            };
-
-            const int rows = 2;
-
-            for (int i = 0; i < rows; i++) 
-            {
-                // Draw message in middle of screen.
-                int len = strlen(message[i]);
-                int x = (screen_width() - len) / 2;
-                int y = (screen_height() - rows) / 2 + i;
-                draw_formatted(x, y, message[i]);
-            }
-
-            show_screen();
+            game_state.gameOver = true; // Let the game_over() function handle the next step accordinly
         }
     }
 }
@@ -710,12 +732,14 @@ void pause_game()
         game_state.paused = true;
         game_state.pause_time = get_current_time();
         cheeseTimerTemp = game_state.cheeseTimer; //Hold the cheese timer value at pause time for later timer resuming
+        trapTimerTemp = game_state.trapTimer; // Hold the trap timer value at pause time for later timer resuming 
     }
     else
     {
         game_state.paused = false;
         game_state.unpause_time = get_current_time();
         game_state.cheeseTimer = cheeseTimerTemp; //Resume the cheese timer
+        game_state.trapTimer = trapTimerTemp; // Resume the trap timer
     }
 }
 
@@ -724,15 +748,14 @@ void update_state(int key_code)
 {
     // Check Pause
     if (key_code == 'p') { pause_game(); }
+    else if (key_code == 'r') { reset_game(); }
     else
     {
         update_hero(key_code);
         update_chaser(key_code);
-        update_traps(key_code);
-        update_cheese(key_code);
+        if(!game_state.gameOver) update_traps(key_code);
+        if(!game_state.gameOver) update_cheese(key_code);
         update_door();
-        
-        if(game_state.gameOver) game_over();
     }
 }
 
@@ -745,25 +768,33 @@ void loop() {  //TODO: check if this is a redundant function with update_state()
 
 
 int main(int argc, char * args[]) {
+    Num_rooms = argc - 1;
+
+    bool exit = false;
     //Check if a map file has been provided
     if (argc > 1)
     {
-        int lvl = 1;
-        setup_screen();
-        FILE * mapFile = fopen(args[lvl], "r");
-        if(mapFile != NULL)
+        lvl = 1;
+        while(!exit)
         {
-            setup(mapFile); //Set the game based on mapFile
-            while (game_state.lvl == lvl) //!game_state.gameOver
+            setup_screen();
+            FILE * mapFile = fopen(args[lvl], "r");
+            if(mapFile != NULL)
             {
-                draw_all();
-                loop();
-                timer_pause( 10 );
+                setup(mapFile); //Set the game based on mapFile
+                while (!game_state.gameOver)
+                {
+                    draw_all();
+                    loop();
+                    timer_pause( 10 );
+                }
+                game_over(&exit);
             }
-        }
-        else
-        {
-            fprintf(stderr, "ERROR: Provided map file is empty. Please check the map file.");
+            else
+            {
+                fprintf(stderr, "ERROR: Provided map file is empty. Please check the map file.");
+                exit = false;
+            }
         }
     }
     else
