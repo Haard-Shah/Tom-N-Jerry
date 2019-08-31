@@ -5,6 +5,7 @@
 #include <cab202_graphics.h>
 #include <cab202_timers.h>
 
+// Define constants
 #define MAX 100
 #define WALL_Char '*'
 #define width (screen_width() - 1) //Usable gamplay width, componsating for starting at 0
@@ -14,6 +15,22 @@
 #define MAX_weapons 5
 #define M_PI 3.14159265358979323846
 #define MAX_HEALTH 5
+#define TIMER 2000
+#define CHEESE_IMG 'C'
+#define TRAP_IMG 'M'
+
+// Define functions
+#define len(x) (int)( sizeof(x) / sizeof((x)[0]) )
+
+// Define colours
+#define COLOR_BLACK	0
+#define COLOR_RED	1
+#define COLOR_GREEN	2
+#define COLOR_YELLOW 3
+#define COLOR_BLUE	4
+#define COLOR_MAGENTA 5
+#define COLOR_CYAN	6
+#define COLOR_WHITE	7
 
 
 struct player {
@@ -48,6 +65,7 @@ struct game{
     bool gameOver;
     double pause_time;
     double unpause_time;
+    timer_id trapTimer;
 };
 
 struct object{
@@ -72,6 +90,7 @@ struct object door;
 struct time gameTime;
 int wallc = 0;
 timer_id cheeseTimerTemp;
+timer_id trap_timer; //TODO: CHECK it's existance
 
 
 // ---------------------------------- READ FUNCTIONS ----------------------------------------------
@@ -228,6 +247,30 @@ void setup_cheese(int cheese_index)
         } while (!isValidLocation2(cheeses[cheese_index].x, cheeses[cheese_index].y));
 }
 
+/* Defines the coordinates of the trap respawn location. Checks if the spaw location is valid */
+void setup_trap(int trap_index)
+{
+    int x = (int)Chaser.x;
+    int y = (int)Chaser.y;
+    int counter = 0;
+
+    do
+    {
+        //Check if it is a valid location
+        if (isValidLocation2(x, y))
+        {
+            traps[trap_index].x = x;
+            traps[trap_index].y = y;
+            break;
+        }
+        else
+        {
+            (counter%2 ? x++ : y++); //TODO: update so if the x > width then x-- else x++ and if y > 4 + height then y-- else y++
+            counter++;
+        }
+    } while (true);
+}
+
 /*Respawns the chaser at a new random location.*/
 void reset_players()
 {
@@ -267,15 +310,24 @@ void initalise_game_state()
     game_state.lvl = 1;
     game_state.ActivePlayer = 'J'; //Default player Jerry
     game_state.start_time = get_current_time();
-    game_state.cheeseTimer = create_timer(2000);
+    game_state.cheeseTimer = create_timer(TIMER);
+    game_state.trapTimer = create_timer(TIMER);
     game_state.pause_time = 0;
     door.visible = false;
 
+    //initialise cheeses and make them invisible 
     for(int i = 0; i < 5; i++) 
     {
         setup_cheese(i);
         cheeses[i].visible = false;
     }
+
+    //make all the traps invisible
+    for (int i = 0; i < 5; i++)
+    {
+        traps[i].visible = false;
+    }
+    
 }
 
 /* setup() initialises the game based on the map file provided. It also defines game's state. */
@@ -370,13 +422,45 @@ void draw_players()
 /*draw_cheese() draw cheese on screen at random(x,y) coordinates. It draw at max only 5 cheeses on screen at rate of 1 cheese per 2 seconds.*/
 void draw_cheese()
 {
-    for(int i = 0; i < MAX_cheeses; i++)
+    set_colours(COLOR_YELLOW, COLOR_BLACK);
+    for(int i = 0; i < len(cheeses); i++)
     {
-        if(cheeses[i].visible) draw_char(cheeses[i].x, cheeses[i].y, 'C'); //TODO: updated this to perform the test
+        if(cheeses[i].visible) draw_char(cheeses[i].x, cheeses[i].y, CHEESE_IMG); //TODO: updated this to perform the test
     }
+    set_colours(COLOR_WHITE, COLOR_BLACK);
 }
 
-/**/
+/*Draw traps on screen at Tom's previous locations. It draw at max only 5 traps on screen at rate of 1 trap per 2 seconds.*/
+void draw_traps()
+{
+    set_colours(COLOR_RED, COLOR_BLACK);
+    for(int i = 0; i < len(traps); i++)
+    {
+        if(traps[i].visible) draw_char(traps[i].x, traps[i].y, TRAP_IMG);
+    }
+    set_colours(COLOR_YELLOW, COLOR_BLACK);
+}
+
+//TODO: combine all of above functions into one
+// /*  */
+// void draw_objects(struct object objects[][])
+// {
+//     for (int i = 0; i < len(objects[i]); i++)
+//     {
+//         /* code */
+//     }
+
+//     /*
+//     pesudocode 
+//     for array in objects:
+//         for element in array: 
+//             draw(element) 
+//     */
+
+    
+// }
+
+/*Draws the door of it's property is set to visible.*/
 void draw_door()
 {
     if(door.visible) draw_char(door.x, door.y, 'X');
@@ -391,6 +475,7 @@ void draw_all()
     draw_walls();
     draw_players();
     draw_cheese();
+    draw_traps();
     draw_door();
 
     show_screen();
@@ -405,12 +490,12 @@ bool collided(int x1, int y1, int x2, int y2)
    return  ((x1 == x2 && y1 == y2) ? true : false);
 }
 
-/*Simple linear equaltion function. Returns the y value given a greadient (m), y-intercent (c) and the input x value is provided.*/
-int h(int m, int c, int x)
-{
-    double result = (m*x) + c;
-    return round(result);
-} //TODO: REMOVE: check if funciton is needed?
+// /*Simple linear equaltion function. Returns the y value given a greadient (m), y-intercent (c) and the input x value is provided.*/
+// int h(int m, int c, int x)
+// {
+//     double result = (m*x) + c;
+//     return round(result);
+// } //TODO: REMOVE: check if funciton is needed?
 
 // ------------------------ UPDATE FUNCTIONS --------------------------------------------------
 
@@ -439,8 +524,6 @@ void game_over()
 
     while (get_char() > 0) {}
     wait_char();
-
-    //game_state.gameOver = true;
 }
 
 /* update_her0() updates the hero's position based on the keyboard input. Keryboard input: a => Left,  d => Right,  w => Up,  s => Down.*/
@@ -490,13 +573,48 @@ void move_chaser()
         Chaser.y += Chaser.dy;
     }
 }
+/* Updates the traps of the game according the game rules. */
+void update_traps()
+{
+     //Ebable next trap if the timer has expired and there are less than 5 traps on screen
+    if(timer_expired(game_state.trapTimer) && game_state.traps < 5 && !game_state.paused) //Drop traps every 2 seconds
+    {
+        // Find the next disable trap and enable it
+        for (int i = 0; i < len(traps); i++)
+        {
+            if(!traps[i].visible) 
+            {
+                setup_trap(i);
+                traps[i].visible = true;
+                game_state.traps++;
+                timer_reset(game_state.trapTimer); // Reset the timer
+                break;
+            }
+        }
+    } 
 
-/*Handles the movement of the chaser player.*/
+    // Check for trap collisions between Hero and Traps
+    for(int i = 0; i < len(traps); i++)
+    {
+        if (traps[i].visible && collided(round(Hero.x), round(Hero.y), traps[i].x, traps[i].y))
+        {
+            Hero.lives--;
+            game_state.traps--;
+            traps[i].visible = false;
+            break;
+        }
+    }
+
+    if(Hero.lives <= 0) game_state.gameOver = true; // Finally check Hero's health 
+}
+
+/*Handles the movement of the chaser player and automatic trap deployments.*/
 void update_chaser(int key_code)
 {
     if (key_code < 0 && !game_state.paused)
     {
         move_chaser();
+        update_traps();
     }
 
     if (collided(Hero.x, Hero.y, Chaser.x, Chaser.y))
@@ -542,7 +660,6 @@ void update_cheese()
             break;
         }
     }
-
 }
 
 /*Checks if the Jerry has eaten >=5 cheese then opens the door to next level.*/
