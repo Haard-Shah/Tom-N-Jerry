@@ -32,7 +32,7 @@
 #define COLOR_CYAN	6
 #define COLOR_WHITE	7
 
-
+// Define Game object's 
 struct player {
     char character;
     double x;
@@ -251,7 +251,13 @@ void setup_cheese(int cheese_index)
 void setup_trap(int trap_index)
 {
     int x = (int)Chaser.x;
+    if(x < 0) x = 0;
+    else if (x > width) x = width;
+
     int y = (int)Chaser.y;
+    if (y <  4) y = 4;
+    else if (y > (4 + height)) y = (4 + height);
+
     int counter = 0;
 
     do
@@ -422,23 +428,23 @@ void draw_players()
 /*draw_cheese() draw cheese on screen at random(x,y) coordinates. It draw at max only 5 cheeses on screen at rate of 1 cheese per 2 seconds.*/
 void draw_cheese()
 {
-    set_colours(COLOR_YELLOW, COLOR_BLACK);
+    set_colours(COLOR_YELLOW, COLOR_BLACK); //Set color forground color to yellow
     for(int i = 0; i < len(cheeses); i++)
     {
         if(cheeses[i].visible) draw_char(cheeses[i].x, cheeses[i].y, CHEESE_IMG); //TODO: updated this to perform the test
     }
-    set_colours(COLOR_WHITE, COLOR_BLACK);
+    set_colours(COLOR_WHITE, COLOR_BLACK); // reset colors to default
 }
 
 /*Draw traps on screen at Tom's previous locations. It draw at max only 5 traps on screen at rate of 1 trap per 2 seconds.*/
 void draw_traps()
 {
-    set_colours(COLOR_RED, COLOR_BLACK);
+    set_colours(COLOR_RED, COLOR_BLACK); //Set color forground color to red
     for(int i = 0; i < len(traps); i++)
     {
         if(traps[i].visible) draw_char(traps[i].x, traps[i].y, TRAP_IMG);
     }
-    set_colours(COLOR_YELLOW, COLOR_BLACK);
+    set_colours(COLOR_YELLOW, COLOR_BLACK); // reset colors to default
 }
 
 //TODO: combine all of above functions into one
@@ -574,7 +580,7 @@ void move_chaser()
     }
 }
 /* Updates the traps of the game according the game rules. */
-void update_traps()
+void update_traps(int key)
 {
      //Ebable next trap if the timer has expired and there are less than 5 traps on screen
     if(timer_expired(game_state.trapTimer) && game_state.traps < 5 && !game_state.paused) //Drop traps every 2 seconds
@@ -614,7 +620,7 @@ void update_chaser(int key_code)
     if (key_code < 0 && !game_state.paused)
     {
         move_chaser();
-        update_traps();
+        // update_traps();
     }
 
     if (collided(Hero.x, Hero.y, Chaser.x, Chaser.y))
@@ -722,6 +728,7 @@ void update_state(int key_code)
     {
         update_hero(key_code);
         update_chaser(key_code);
+        update_traps(key_code);
         update_cheese(key_code);
         update_door();
         
