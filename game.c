@@ -18,6 +18,9 @@
 #define TIMER 2000
 #define CHEESE_IMG 'C'
 #define TRAP_IMG 'M'
+#define FIREWORK_IMG '^'
+#define MAX_FIREWORKS 50
+#define WEAPON_SPEED 0.5
 
 // Define functions
 #define len(x) (int)( sizeof(x) / sizeof((x)[0]) )
@@ -57,7 +60,7 @@ struct game{
     int traps;
     bool paused;
     int cheeseEaten;
-    int fireworksHit;
+    //int fireworksHit; //TODO: REMOVE not being used
     char ActivePlayer;
     double start_time;
     timer_id cheeseTimer;
@@ -65,6 +68,8 @@ struct game{
     double pause_time;
     double unpause_time;
     timer_id trapTimer;
+    bool resetLvl;
+    int finalScore;
 };
 
 struct object{
@@ -72,6 +77,12 @@ struct object{
     int y;
     bool visible;
 };
+
+struct weapon{
+    double x;
+    double y;
+    bool visible;
+}; //TODO: combine weapon with object struct as they are same currently using weapon due to truncation issues 
 
 struct time{
     int min;
@@ -81,10 +92,12 @@ struct time{
 // Global variables
 struct wall Walls[MAX];
 struct player Hero = { 'J', 0, 0, 0, 0, MAX_HEALTH};
-struct player Chaser = { 'T', 1, 1, 0, 0, INT32_MAX}; //TODO: why can't  set the int values to NULL in the initialisation of the struct
+struct player Chaser = { 'T', 1, 1, 0, 0, INT32_MAX}; 
+//TODO: why can't  set the int values to NULL in the initialisation of the struct
 struct game game_state;
 struct object cheeses[MAX_cheeses];
 struct object traps[MAX_traps];
+struct weapon fireworks[MAX_FIREWORKS];
 struct object door;
 struct time gameTime;
 int wallc = 0;
@@ -93,6 +106,32 @@ timer_id trapTimerTemp;
 int Num_rooms;
 int lvl;
 
+// ------------------------------------ SUPPORTING FUNCTIONS ----------------------------------------------
+// /* Returns the total score of the current game state.  */
+// int score()
+// {
+//     return (game_state.cheeseEaten + game_state.fireworksHit);
+// } //TODO: REMOVE not being used
+
+/*Reset's the game to level (room) 1.*/
+void reset_game()
+{
+    lvl = 1; //Reset to first room
+    clear_screen();
+    if(game_state.gameOver) game_state.gameOver = false; // Begin play //TODO: CHECK: need to check the logic as it currently will not reset the game
+}
+
+/* Wraps the x and y values to values within game boundary  */
+void map_values(double *x, double *y)
+{
+    //map the x axis
+    if (*x < 0 )*x = 0;
+    else if (*x > width) *x = width;
+
+    //map the y axis
+    if (*y < 4) *y = 4;
+    else if (*y > (4 + height)) *y = (4 + height);
+}
 
 // ---------------------------------- READ FUNCTIONS ----------------------------------------------
 
@@ -109,9 +148,8 @@ void read_wall(double X1, double Y1, double X2, double Y2, struct wall *wall)
 /*Calculated the step size dx and dy for the chaser.*/
 void initialise_chaser_movement(struct player *chaser)
 {
-    //int rand_max = RAND_MAX;
     double direction = rand() * M_PI * 2 / RAND_MAX;
-    float speed = 0.15 + ((rand() % 100) / 100) * 0.8;
+    float speed = 0.15 + ((rand() % 100) / 100) * 0.8; //Mapping the speed to range of 0.15 to 0.8 pixels per step
 
     chaser->dx = speed * cos(direction);
     chaser->dy = speed * sin(direction);
@@ -279,17 +317,82 @@ void setup_trap(int trap_index)
     } while (true);
 }
 
-/*Respawns the chaser at a new random location.*/
-void reset_players()
+void move_weapon(double current_x, double current_y, int weapon_index)
+{
+    //(NOTE: wrt == with respect to)
+
+    //Get a unit vector of Tom's displacement wrt current location 
+    double theta;
+    // Set a gaurd statement so if dx does == 0 then it is set to infinity which will equate to near 0 when divided
+    if(abs(Chaser.x - current_x) == 0)
+    {
+        // Weapon is perpendicular to Tom so (dy/dx) == NaN as (dx == 0) therefore setting the theta manually to avoid segmentation fault
+        if(Chaser.y <= current_y) theta = M_PI / 2;  // 90 degrees Tom is perpendicularly above the weapon
+        else theta = M_PI * (3/2); // 270 degrees Tom is perpendiculary below the weapon
+    }
+    else
+    {
+        double dy = abs(Chaser.y - current_y);
+        double dx = abs(Chaser.x - current_x);
+        theta = atan( dy / dx); //absolute unit vector. In this case the magnitute of the unit vector is just 1 as it moves 1 pixel per step so absolute unit vector should be fine for x and y calculations
+    } 
+
+    //Find out where Tom is in regards to current location and fire weapon accordingly    
+    // dx = speed * cos(theta);  ->  dx = (1) * cos(theta)   ->   dx = cos(theta)  
+    // SO, x = current_x + dx -> x = current_x + cos(theta)
+     if (Chaser.x < current_x ) fireworks[weapon_index].x = current_x - (WEAPON_SPEED * (width/height) * cos(theta)); // So Tom is to the left of current location 
+     else fireworks[weapon_index].x = current_x + (WEAPON_SPEED * (width/height ) * cos(theta)); // Tom is to the right of current location
+    
+    // SIMILARLY dy = speed * sin(theta);  ->  dy = (1) * sin(theta)   ->   dy = sin(theta)      
+    // SO, y = current_y + dx -> y = current_y + sin(theta)
+     if (Chaser.y < current_y) fireworks[weapon_index].y = current_y - (WEAPON_SPEED * sin(theta)); // Tom is above current location
+     else fireworks[weapon_index].y = current_y + (WEAPON_SPEED *  sin(theta)); // Tom is below current location
+
+    //  map_values(&fireworks[weapon_index].x, &fireworks[weapon_index].y);
+}
+
+void setup_firework(int firework_index)
+{    
+    move_weapon(Hero.x, Hero.y, firework_index); // Initialise the weapon based on the Hero's location it travels away from Hero
+}
+void fire()
+{
+    //setup the firework 
+    for (int i = 0; i < MAX_FIREWORKS; i++)
+    {
+        if(!fireworks[i].visible)
+        {
+            //Fire one weapon at a time 
+            setup_firework(i);
+            game_state.weapons++;
+            fireworks[i].visible = true; // Make it visible on the screen
+            break;
+        }
+    }    
+}
+
+/* Reset's Hers's position back to the original position. */
+void reset_Hero()
 {
     //Reset Jerry
     Hero.x = Hero.reset_x;
     Hero.y = Hero.reset_y;
+}
 
+/* Reset's chaser back to the original position and sets a new random velocity */
+void reset_chaser()
+{
     //Reset Tom
     Chaser.x = Chaser.reset_x;
     Chaser.y = Chaser.reset_y;
     initialise_chaser_movement(&Chaser); //Set new velocity
+}
+
+/*Respawns the chaser at a new random location.*/
+void reset_players()
+{
+    reset_Hero();
+    reset_chaser();    
 }
 
 /*Sets up door's location at a valid door location.*/
@@ -302,21 +405,23 @@ void setup_door()
     } while (!isValidLocation2(door.x, door.y));
 
     door.visible = true;
-    
 }
 
 /*Initialises the game global variables, default character and game start time.*/
 void initalise_game_state()
 {
-    if (lvl == 1)
-    {
-        game_state.chesee = 0;
-        game_state.cheeseEaten = 0;
-        game_state.weapons = 0;
+    if (game_state.resetLvl || lvl == 1) //Reset below values if resetting to level 1
+    {   
+        game_state.finalScore = 0;
         game_state.start_time = get_current_time();
+        game_state.resetLvl = false;
+        Hero.lives = MAX_HEALTH;
     }
-    game_state.fireworksHit = 0;
-    game_state.traps = 0;
+    game_state.cheeseEaten = 0;
+    //game_state.fireworksHit = 0; //TODO: REMOVE not being used
+    game_state.traps = 0; 
+    game_state.chesee = 0;
+    game_state.weapons = 0;
     game_state.paused = false;
     game_state.gameOver = false;
     game_state.ActivePlayer = 'J'; //Default player Jerry
@@ -325,19 +430,18 @@ void initalise_game_state()
     game_state.pause_time = 0;
     door.visible = false;
 
-    //initialise cheeses and make them invisible 
+    //initialise cheeses and make them invisible  AND make the traps inviisible 
     for(int i = 0; i < 5; i++) 
     {
         setup_cheese(i);
         cheeses[i].visible = false;
-    }
-
-    //make all the traps invisible
-    for (int i = 0; i < 5; i++)
-    {
         traps[i].visible = false;
     }
-    
+
+    for (int i = 0; i < MAX_FIREWORKS; i++)
+    {
+        fireworks[i].visible = false; //Make all the fireworks invisible at the start
+    }
 }
 
 /* setup() initialises the game based on the map file provided. It also defines game's state. */
@@ -386,27 +490,13 @@ void update_time()
     }    
 }
 
-// ------------------------------------ SUPPORTING FUNCTIONS ----------------------------------------------
-/* Returns the total score of the current game state.  */
-int score()
-{
-    return (game_state.cheeseEaten + game_state.fireworksHit);
-}
-
-/*Reset's the game to level (room) 1.*/
-void reset_game()
-{
-    lvl = 1; //Reset to first room
-    clear_screen();
-    game_state.gameOver = false; // Begin play
-}
 // ------------------------- DRAW FUNCTIONS -----------------------------------------
 
 /*draw_game_stats() draws all the game stats in the game header area. List inludes: Score, Lives, Player, Time, Cheese, Traps, Fireworks and Level.*/
 void draw_game_stats()
 {
     draw_formatted(0, 0, "Student Number: N10235779");
-    draw_formatted(round(width * 0.38), 0, "Score: %3d", score());
+    draw_formatted(round(width * 0.38), 0, "Score: %3d", game_state.finalScore);
     draw_formatted(round(width * 0.55), 0, "Lives: %d", lives());
     draw_formatted(round(width * 0.7), 0, "Player: %c", game_state.ActivePlayer);
     update_time();
@@ -476,10 +566,22 @@ void draw_traps()
     
 // }
 
+void draw_fireworks()
+{
+    set_colours(COLOR_RED, COLOR_MAGENTA);
+    for (int i = 0; i < MAX_FIREWORKS; i++)
+    {
+        if(fireworks[i].visible) draw_char(round(fireworks[i].x), round(fireworks[i].y), FIREWORK_IMG);
+    }
+    set_colours(COLOR_WHITE, COLOR_BLACK);
+}
+
 /*Draws the door of it's property is set to visible.*/
 void draw_door()
 {
+    set_colours(COLOR_GREEN, COLOR_BLUE);
     if(door.visible) draw_char(door.x, door.y, 'X');
+    set_colours(COLOR_WHITE, COLOR_BLACK);
 }
 
 /*draw_all() handles the drawing of all entities of the game.*/
@@ -492,6 +594,7 @@ void draw_all()
     draw_players();
     draw_cheese();
     draw_traps();
+    draw_fireworks();
     draw_door();
 
     show_screen();
@@ -530,7 +633,7 @@ void game_over(bool *exitToTerminal)
 
     char *message[] = {
         (Hero.lives <= 0? "Game Over!" : "YOU WIN!"),
-        "_", // Place holder text
+        "_", // Place holder text //TODO: Need to ask about this
         "Press 'r' to restart the game or Press 'q' to exit..."
     };
 
@@ -699,6 +802,7 @@ void update_cheese()
         if (cheeses[i].visible && collided(round(Hero.x), round(Hero.y), cheeses[i].x, cheeses[i].y))
         {
             game_state.cheeseEaten++;
+            game_state.finalScore++;
             game_state.chesee--;
             setup_cheese(i); //reinitialise the cheese for next round
             cheeses[i].visible = false;
@@ -707,10 +811,45 @@ void update_cheese()
     }
 }
 
+void update_fireworks(int key_code)
+{
+    for (int i = 0; i < MAX_FIREWORKS; i++)
+    {
+        if (fireworks[i].visible)
+        {
+            // check for weapon's collision with Tom
+            if ((int)Chaser.x == (int)fireworks[i].x && (int)Chaser.y == (int)fireworks[i].y)
+            {
+                game_state.finalScore++;
+                game_state.weapons--;
+                fireworks[i].visible = false;
+                reset_chaser();
+                break; // No point checking others as Tom no longer is in the same posoition
+            }
+        }
+    }
+    
+    //update all the visible firework's coordinates 
+    for (int i = 0; i < MAX_FIREWORKS; i++)
+    {
+        if (fireworks[i].visible) 
+        {
+            move_weapon(fireworks[i].x, fireworks[i].y, i); // if they are on the screen than move them
+            if ( !isValidLocation2(round(fireworks[i].x), round(fireworks[i].y)) || \
+                (round(fireworks[i].x) < 0 || round(fireworks[i].x) > width ) || \
+                (round(fireworks[i].y) < 4 || round(fireworks[i].y) > (4 + height)) )
+            {
+                fireworks[i].visible = false;
+                game_state.weapons--;
+            } 
+        }
+    }
+}
+
 /*Checks if the Jerry has eaten >=5 cheese then opens the door to next level.*/
 void update_door()
 {
-    if(game_state.cheeseEaten > 4 && !door.visible)
+    if(game_state.cheeseEaten > 4 && !door.visible) //FIXME: REMOVE: fixme tag 
     {
         setup_door();
     }
@@ -748,13 +887,19 @@ void update_state(int key_code)
 {
     // Check Pause
     if (key_code == 'p') { pause_game(); }
-    else if (key_code == 'r') { reset_game(); }
+    else if (key_code == 'r') 
+    { 
+        game_state.resetLvl = true;
+        reset_game(); 
+    }
+    else if (key_code == 'f' && lvl > 1) fire();
     else
     {
         update_hero(key_code);
         update_chaser(key_code);
         if(!game_state.gameOver) update_traps(key_code);
         if(!game_state.gameOver) update_cheese(key_code);
+        if(!game_state.gameOver) update_fireworks(key_code);
         update_door();
     }
 }
@@ -793,7 +938,7 @@ int main(int argc, char * args[]) {
             else
             {
                 fprintf(stderr, "ERROR: Provided map file is empty. Please check the map file.");
-                exit = false;
+                exit = true;
             }
         }
     }
