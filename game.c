@@ -633,7 +633,7 @@ void game_over(bool *exitToTerminal)
 
     char *message[] = {
         (Hero.lives <= 0? "Game Over!" : "YOU WIN!"),
-        "_", // Place holder text //TODO: Need to ask about this
+        "You Lost all Your lives.", 
         "Press 'r' to restart the game or Press 'q' to exit..."
     };
 
@@ -645,8 +645,19 @@ void game_over(bool *exitToTerminal)
         int len = strlen(message[i]);
         int x = (screen_width() - len) / 2;
         int y = (screen_height() - len(message)) / 2 + i;
+        if(i == 1) set_foreground(COLOR_RED);
         draw_formatted(x, y, message[i]);
+        if(i == 1) set_foreground(COLOR_WHITE);
     }
+
+    if (Hero.lives > 0 )
+    {
+        draw_line(0, (screen_height() - len(message)) / 2 + 1, width, (screen_height() - len(message)) / 2 + 1, ' ');
+        set_foreground(COLOR_GREEN);
+        draw_formatted((screen_width() - 9) / 2, (screen_height() - len(message)) / 2 + 1, "Score: %2d", game_state.finalScore);
+        set_foreground(COLOR_WHITE);
+    }
+    
 
     show_screen();
     
@@ -849,7 +860,7 @@ void update_fireworks(int key_code)
 /*Checks if the Jerry has eaten >=5 cheese then opens the door to next level.*/
 void update_door()
 {
-    if(game_state.cheeseEaten > 4 && !door.visible) //FIXME: REMOVE: fixme tag 
+    if(game_state.cheeseEaten > 0 && !door.visible) //FIXME: REMOVE: fixme tag 
     {
         setup_door();
     }
