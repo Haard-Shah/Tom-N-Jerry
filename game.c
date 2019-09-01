@@ -18,7 +18,7 @@
 #define TIMER 2000
 #define CHEESE_IMG 'C'
 #define TRAP_IMG 'M'
-#define FIREWORK_IMG '^'
+#define FIREWORK_IMG '#'
 #define MAX_FIREWORKS 50
 #define WEAPON_SPEED 0.5
 
@@ -70,6 +70,7 @@ struct game{
     timer_id trapTimer;
     bool resetLvl;
     int finalScore;
+    bool lvlUp;
 };
 
 struct object{
@@ -429,6 +430,7 @@ void initalise_game_state()
     game_state.trapTimer = create_timer(TIMER);
     game_state.pause_time = 0;
     door.visible = false;
+    game_state.resetLvl = false; //
 
     //initialise cheeses and make them invisible  AND make the traps inviisible 
     for(int i = 0; i < 5; i++) 
@@ -539,7 +541,7 @@ void draw_cheese()
 /*Draw traps on screen at Tom's previous locations. It draw at max only 5 traps on screen at rate of 1 trap per 2 seconds.*/
 void draw_traps()
 {
-    set_colours(COLOR_RED, COLOR_BLACK); //Set color forground color to red
+    set_colours(COLOR_CYAN, COLOR_BLACK); //Set color forground color to cyan
     for(int i = 0; i < len(traps); i++)
     {
         if(traps[i].visible) draw_char(traps[i].x, traps[i].y, TRAP_IMG);
@@ -568,7 +570,8 @@ void draw_traps()
 
 void draw_fireworks()
 {
-    set_colours(COLOR_RED, COLOR_MAGENTA);
+    // set_colours(COLOR_RED, COLOR_YELLOW);
+    set_colours(COLOR_YELLOW, COLOR_RED);
     for (int i = 0; i < MAX_FIREWORKS; i++)
     {
         if(fireworks[i].visible) draw_char(round(fireworks[i].x), round(fireworks[i].y), FIREWORK_IMG);
@@ -588,6 +591,11 @@ void draw_door()
 void draw_all()
 {
     clear_screen();
+    if(game_state.lvlUp)
+    {
+        show_screen(); //TODO: REMOVE 
+        game_state.lvlUp = false;
+    }
 
     draw_game_stats();
     draw_walls();
@@ -621,6 +629,12 @@ bool collided(int x1, int y1, int x2, int y2)
 /*Displays the game over message and waits for a key input to exit the game.*/
 void game_over(bool *exitToTerminal)
 {
+    if (game_state.lvlUp)
+    {
+        clear_screen();
+        game_state.gameOver = false;
+        return; //level up to the next level in current state
+    }
     if(lvl < Num_rooms && Hero.lives > 0)
     {
         lvl++;
@@ -635,10 +649,7 @@ void game_over(bool *exitToTerminal)
         (Hero.lives <= 0? "Game Over!" : "YOU WIN!"),
         "You Lost all Your lives.", 
         "Press 'r' to restart the game or Press 'q' to exit..."
-    };
-
-    //snprintf(message[2], 19, "Score: %3d", score()); // Append the correct score
-    
+    };    
 
     for (int i = 0; i < len(message); i++) {
         // Draw message in middle of screen.
@@ -657,11 +668,8 @@ void game_over(bool *exitToTerminal)
         draw_formatted((screen_width() - 9) / 2, (screen_height() - len(message)) / 2 + 1, "Score: %2d", game_state.finalScore);
         set_foreground(COLOR_WHITE);
     }
-    
-
     show_screen();
-    
-    
+
     while (true)
     {
         char key_code = get_char();
@@ -678,7 +686,6 @@ void game_over(bool *exitToTerminal)
             break;
         }
     } 
-    // wait_char();
 }
 
 /* update_her0() updates the hero's position based on the keyboard input. Keryboard input: a => Left,  d => Right,  w => Up,  s => Down.*/
@@ -874,6 +881,30 @@ void update_door()
     }
 }
 
+void reset_walls()
+{
+    for (int i = 0; i < MAX; i++)
+    {
+        Walls[i].x1 = 0;
+        Walls[i].y1 = 0;
+        Walls[i].x2 = 0;
+        Walls[i].y2 = 0;
+    }
+    wallc = 0;    
+}
+
+/* Switchs to the next level in the game until last room has been reached. */
+void level_up()
+{
+    if (lvl < Num_rooms)
+    {
+        game_state.lvlUp = true;
+        game_state.gameOver = true;
+        reset_walls();
+        lvl++;
+    }   
+}
+
 /*pause_game() changes the state of the game to pause mode. */
 void pause_game()
 {
@@ -904,6 +935,7 @@ void update_state(int key_code)
         reset_game(); 
     }
     else if (key_code == 'f' && lvl > 1) fire();
+    else if (key_code == 'l' && Num_rooms > 1) level_up();
     else
     {
         update_hero(key_code);
