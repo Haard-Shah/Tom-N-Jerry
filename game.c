@@ -14,7 +14,7 @@
 #define MAX_traps 5
 #define MAX_weapons 5
 #define M_PI 3.14159265358979323846
-#define MAX_HEALTH 1
+#define MAX_HEALTH 5
 #define TIMER 2000
 #define CHEESE_IMG 'C'
 #define TRAP_IMG 'M'
@@ -61,16 +61,19 @@ struct game{
     bool paused;
     int cheeseEaten;
     //int fireworksHit; //TODO: REMOVE not being used
-    char ActivePlayer;
     double start_time;
     timer_id cheeseTimer;
-    bool gameOver;
+    timer_id trapTimer;
+    timer_id fireworkTimer;
     double pause_time;
     double unpause_time;
-    timer_id trapTimer;
+    double lvl_start_time;
+    bool gameOver;
     bool resetLvl;
     int finalScore;
     bool lvlUp;
+    char activePlayer;
+    int lives_at_swtich;
 };
 
 struct object{
@@ -96,6 +99,7 @@ struct player Hero = { 'J', 0, 0, 0, 0, MAX_HEALTH};
 struct player Chaser = { 'T', 1, 1, 0, 0, INT32_MAX}; 
 //TODO: why can't  set the int values to NULL in the initialisation of the struct
 struct game game_state;
+struct game stored_state;
 struct object cheeses[MAX_cheeses];
 struct object traps[MAX_traps];
 struct weapon fireworks[MAX_FIREWORKS];
@@ -106,6 +110,8 @@ timer_id cheeseTimerTemp;
 timer_id trapTimerTemp;
 int Num_rooms;
 int lvl;
+char ActivePlayer = 'J'; //Default player Jerry
+bool switched = false; 
 
 // ------------------------------------ SUPPORTING FUNCTIONS ----------------------------------------------
 // /* Returns the total score of the current game state.  */
@@ -162,7 +168,7 @@ void read_character(double x1, double y1, struct player *player)
     player->x = x1 * width;
     player->y = 4 + (y1 * height);
 
-    if(game_state.ActivePlayer == 'J')
+    if(ActivePlayer == 'J')
     {
         if (player->character == 'J')
         {
@@ -318,6 +324,7 @@ void setup_trap(int trap_index)
     } while (true);
 }
 
+/* Updates current trajectery of the weapon to remain locked on to Chaser. Firework moves in the recalcuated trajectory to target Chaser. */
 void move_weapon(double current_x, double current_y, int weapon_index)
 {
     //(NOTE: wrt == with respect to)
@@ -348,8 +355,6 @@ void move_weapon(double current_x, double current_y, int weapon_index)
     // SO, y = current_y + dx -> y = current_y + sin(theta)
      if (Chaser.y < current_y) fireworks[weapon_index].y = current_y - (WEAPON_SPEED * sin(theta)); // Tom is above current location
      else fireworks[weapon_index].y = current_y + (WEAPON_SPEED *  sin(theta)); // Tom is below current location
-
-    //  map_values(&fireworks[weapon_index].x, &fireworks[weapon_index].y);
 }
 
 void setup_firework(int firework_index)
@@ -417,6 +422,8 @@ void initalise_game_state()
         game_state.start_time = get_current_time();
         game_state.resetLvl = false;
         Hero.lives = MAX_HEALTH;
+        Chaser.lives = MAX_HEALTH;
+        game_state.lvl_start_time = get_current_time();
     }
     game_state.cheeseEaten = 0;
     //game_state.fireworksHit = 0; //TODO: REMOVE not being used
@@ -425,13 +432,21 @@ void initalise_game_state()
     game_state.weapons = 0;
     game_state.paused = false;
     game_state.gameOver = false;
-    game_state.ActivePlayer = 'J'; //Default player Jerry
-    game_state.cheeseTimer = create_timer(TIMER);
-    game_state.trapTimer = create_timer(TIMER);
+    
+    //TODO: break it down into initialise_timers()
+    if(ActivePlayer == 'J')
+    {
+        game_state.cheeseTimer = create_timer(TIMER);
+        game_state.trapTimer = create_timer(TIMER);
+    }
+    else game_state.fireworkTimer = create_timer(2.5 * TIMER);
+    
     game_state.pause_time = 0;
     door.visible = false;
-    game_state.resetLvl = false; //
+    game_state.resetLvl = false;
+    game_state.activePlayer = ActivePlayer;
 
+    //TODO: BREAK it down into initialise_game_objects()
     //initialise cheeses and make them invisible  AND make the traps inviisible 
     for(int i = 0; i < 5; i++) 
     {
@@ -466,7 +481,7 @@ void setup (FILE * stream)
 /*Returns the lives of the active player.*/
 int lives()
 {
-    return (game_state.ActivePlayer == 'J' ? Hero.lives : Chaser.lives);
+    return (ActivePlayer == 'J' ? Hero.lives : Chaser.lives);
 }
 
 
@@ -500,7 +515,7 @@ void draw_game_stats()
     draw_formatted(0, 0, "Student Number: N10235779");
     draw_formatted(round(width * 0.38), 0, "Score: %3d", game_state.finalScore);
     draw_formatted(round(width * 0.55), 0, "Lives: %d", lives());
-    draw_formatted(round(width * 0.7), 0, "Player: %c", game_state.ActivePlayer);
+    draw_formatted(round(width * 0.7), 0, "Player: %c", ActivePlayer);
     update_time();
     draw_formatted(round(width * 0.85), 0, "Time: %02d:%02d", gameTime.min, gameTime.sec);
 
@@ -509,7 +524,7 @@ void draw_game_stats()
     draw_formatted(round(width * 0.45), 2, "Fireworks: %d", game_state.weapons);
     draw_formatted(round(width * 0.65), 2, "Level: %d", lvl);
     draw_formatted(round(width * 0.8), 2, "x: %d", (int)round(Hero.x)); //TODO: REMOVE
-    draw_formatted(round(width * 0.9), 2, "y: %d", (int)round(Hero.y)); //TODO: REMOVE
+    draw_formatted(round(width * 0.9), 2, "y: %lf", Chaser.dy); //TODO: REMOVE
 
     draw_line(0, 3, width, 3, '-');
 }
@@ -707,8 +722,8 @@ void update_hero(int key_code) //TODO: update update_hero() to incorporate the c
             ( isValidLocation2((int)round(Hero.x), (int)round(Hero.y + 1))) ) { Hero.y++; } // Down
 }
 
-/*Moves the chaser to the next VALID location. */
-void move_chaser()
+/* Performs the randomised movement of Chaser. If chaser collides with walls or bondaries of the game a new randomised velocity is generated to continue moving. */
+void randomised_movement()
 {
     bool bounced = false;
     // Predict the next step of the chaser
@@ -716,15 +731,13 @@ void move_chaser()
     int next_y = round(Chaser.y + Chaser.dy);
 
     //Check for collisions
-    if(next_x == 0 || next_x == width || !(isValidLocation2(next_x, next_y)) ) //If on the left or the right border switch direction horizontally
+    if(next_x == 0 || next_x == width || !(isValidLocation2(next_x, next_y)) ) //If on the left or the right border  or colliding with a vertical wall switch direction horizontally
     {
-        // Chaser.dx = -Chaser.dx;
         initialise_chaser_movement( &Chaser );  
         bounced = true;
     }
-    if (next_y == 3 || next_y == (height + 5) || !(isValidLocation2(next_x, next_y))) //if on the top or bottom border switch direction vertically
+    if (next_y == 3 || next_y == (height + 5) || !(isValidLocation2(next_x, next_y))) //if on the top or bottom border or colliding with a horizontal wall switch direction vertically
     {
-        // Chaser.dy = -Chaser.dy;
         initialise_chaser_movement( &Chaser );
         bounced = true;
     }
@@ -735,11 +748,60 @@ void move_chaser()
         Chaser.y += Chaser.dy;
     }
 }
+
+/* Moves chaser intelligently to chase Hero rather than just moving randomly in hope of one day catching the Hero. */
+void intelligent_movement()
+{
+    //Get a unit vector of Tom's displacement with respect to Jerry
+    double theta;
+
+    if(abs(Hero.x - Chaser.x) == 0)
+    {
+        // Weapon is perpendicular to Tom so (dy/dx) == NaN as (dx == 0) therefore setting the theta manually to avoid segmentation fault
+        if(Hero.y <= Chaser.y) theta = M_PI / 2;  // 90 degrees Jerry is perpendicularly above Tom
+        else theta = M_PI * (3/2); // 270 degrees Jerry is perpendiculary below Tom
+    }
+    else
+    {
+        double dy = abs(Hero.y - Chaser.y);
+        double dx = abs(Hero.x - Chaser.x);
+        theta = atan( dy / dx); //angle of the unit vector. 
+    } 
+
+    //float speed = 0.3;
+    
+    //Speed will grow expotentially as time passes in the level
+    float speed = (1/6000) * exp(sqrt(get_current_time() - game_state.lvl_start_time)) - 1; // magnitute of the unit vector
+
+    Chaser.dy = speed;
+
+    // dx = speed * cos(theta);  to avoid constantly writing and reading the data I have choosen to just use the speed*cos(theta) definition of dx and dy. for efficiency.
+     if (Hero.x < Chaser.x ) Chaser.x -= speed * cos(theta); // So Jerry is to the left of current location 
+     else Chaser.x += speed * cos(theta); // Jerry is to the right of current location
+
+     if (Hero.y < Chaser.y) Chaser.y -=  speed * sin(theta); // Jerry is above current location
+     else Chaser.y += speed *  sin(theta); // Jerry is below current location
+
+     //NEXT
+        // check for wall collisions and bondary collisions
+            // store prevous step values and using a threshold see if last two values are exactly the same if yes than move in direction of greater change so if dx>dy than than a step in dx and vice verse 
+            // if both are distances are equal than randomly chose a direction and take a step in that direction 
+}
+
+/*Moves the chaser to the next VALID location. */ //TODO: UPDATE the description
+void move_chaser()
+{
+    if (lvl < 2)
+    {
+        randomised_movement();
+    }
+    else intelligent_movement();
+}
 /* Updates the traps of the game according the game rules. */
 void update_traps(int key)
 {
-     //Ebable next trap if the timer has expired and there are less than 5 traps on screen
-    if(timer_expired(game_state.trapTimer) && game_state.traps < 5 && !game_state.paused) //Drop traps every 2 seconds
+     //Ebable next trap if the timer has expired and there are less than 5 traps on screen and only if playing as Jerry and game is not in pause mode 
+    if(timer_expired(game_state.trapTimer) && game_state.traps < 5 && !game_state.paused && ActivePlayer == 'J') //Drop traps every 2 seconds
     {
         // Find the next disable trap and enable it
         for (int i = 0; i < len(traps); i++)
@@ -881,6 +943,23 @@ void update_door()
     }
 }
 
+/* Drops a new cheese on the current location of Tom if there are less than 5 cheeses on screen. */
+void drop_cheese()
+{
+    //if there are less than 5 cheese on screen 
+        // Make the next cheese in the array visible 
+        // Set the new cheese's coordinates to current Tom's coordinates (remeber to use round as x and y are int types and draw_player uses round to draw the charactes)
+
+}
+
+/* Drops a new trap on current location of Tom if there are less than 5 traps on screen.  */
+void drop_trap()
+{
+    //if there are less than 5 traps on screen 
+        // Make the next trap in the array visible 
+        // Set the new trap's coordinates to current Tom's coordinates (remeber to use round as x and y are int types and draw_player uses round to draw the charactes)
+}
+
 void reset_walls()
 {
     for (int i = 0; i < MAX; i++)
@@ -903,6 +982,38 @@ void level_up()
         reset_walls();
         lvl++;
     }   
+}
+
+void switch_players()
+{
+    //change the active player to Tom 
+    ActivePlayer = (ActivePlayer == 'J' ? 'T' : 'J');
+
+    if (!switched) // if switching first time 
+    {
+        //save the state of the game 
+        stored_state = game_state;// Store current state of the game for Jerry 
+        stored_state.lives_at_swtich = Hero.lives;
+        initalise_game_state();// Initialised new game state
+        switched = true;
+    }
+    else 
+    {
+        struct game Temp = game_state;
+        game_state = stored_state;
+        stored_state = Temp;
+
+        if (game_state.activePlayer == 'J')
+        {
+            Hero.lives = game_state.lives_at_swtich;
+            stored_state.lives_at_swtich = Chaser.lives;
+        }
+        else
+        {
+            Chaser.lives = game_state.lives_at_swtich;
+            stored_state.lives_at_swtich = Hero.lives;
+        } 
+    } 
 }
 
 /*pause_game() changes the state of the game to pause mode. */
@@ -934,8 +1045,11 @@ void update_state(int key_code)
         game_state.resetLvl = true;
         reset_game(); 
     }
-    else if (key_code == 'f' && lvl > 1) fire();
+    else if (key_code == 'f' && lvl > 1 && ActivePlayer == 'J') fire();
     else if (key_code == 'l' && Num_rooms > 1) level_up();
+    else if (key_code == 'z') switch_players();
+    else if (key_code == 'c' && ActivePlayer == 'T') drop_cheese();
+    else if (key_code == 'm' && ActivePlayer == 'T') drop_trap();
     else
     {
         update_hero(key_code);
