@@ -111,7 +111,8 @@ timer_id trapTimerTemp;
 int Num_rooms;
 int lvl;
 char ActivePlayer = 'J'; //Default player Jerry
-bool switched = false; 
+bool switchedBefore = false; 
+bool playerSwitch;
 
 // ------------------------------------ SUPPORTING FUNCTIONS ----------------------------------------------
 // /* Returns the total score of the current game state.  */
@@ -416,7 +417,7 @@ void setup_door()
 /*Initialises the game global variables, default character and game start time.*/
 void initalise_game_state()
 {
-    if (game_state.resetLvl || lvl == 1) //Reset below values if resetting to level 1
+    if ((game_state.resetLvl || lvl == 1) && !playerSwitch ) //Reset below values if resetting to level 1
     {   
         game_state.finalScore = 0;
         game_state.start_time = get_current_time();
@@ -427,9 +428,12 @@ void initalise_game_state()
     }
     game_state.cheeseEaten = 0;
     //game_state.fireworksHit = 0; //TODO: REMOVE not being used
-    game_state.traps = 0; 
-    game_state.chesee = 0;
-    game_state.weapons = 0;
+    if(!playerSwitch) 
+    {
+        game_state.traps = 0; 
+        game_state.chesee = 0;
+        game_state.weapons = 0;
+    }
     game_state.paused = false;
     game_state.gameOver = false;
     
@@ -445,6 +449,7 @@ void initalise_game_state()
     door.visible = false;
     game_state.resetLvl = false;
     game_state.activePlayer = ActivePlayer;
+    playerSwitch = false;
 
     //TODO: BREAK it down into initialise_game_objects()
     //initialise cheeses and make them invisible  AND make the traps inviisible 
@@ -754,36 +759,52 @@ void intelligent_movement()
 {
     //Get a unit vector of Tom's displacement with respect to Jerry
     double theta;
+    double dy = (Hero.y - Chaser.y); //change in y axis
+    double dx = (Hero.x - Chaser.x); // change in x axis 
+    double next_x = Chaser.x;
+    double next_y = Chaser.y;
 
-    if(abs(Hero.x - Chaser.x) == 0)
+    if(abs(dx) < 0.002 && abs(dy) < 0.002) // Putting a guards condition as the movement the magnitude of the step is based on the change in each direction. So if the change is very small the Chaser has indeed caught the Hero
+    {
+        next_x = Hero.x;
+        next_y = Hero.y;
+    }
+    else if(abs(Hero.x - Chaser.x) == 0) // divide by zero cases
     {
         // Weapon is perpendicular to Tom so (dy/dx) == NaN as (dx == 0) therefore setting the theta manually to avoid segmentation fault
         if(Hero.y <= Chaser.y) theta = M_PI / 2;  // 90 degrees Jerry is perpendicularly above Tom
         else theta = M_PI * (3/2); // 270 degrees Jerry is perpendiculary below Tom
     }
-    else
+    else // the players are on some angle and can move diagonally
     {
-        double dy = abs(Hero.y - Chaser.y);
-        double dx = abs(Hero.x - Chaser.x);
-        theta = atan( dy / dx); //angle of the unit vector. 
+        theta = atan( abs(dy) / abs(dx)); //angle of the unit vector. 
     } 
 
-    //float speed = 0.3;
+    double s = (1/3) * (exp(sqrt(0.008 * (get_current_time() - game_state.lvl_start_time))) - 1);
     
-    //Speed will grow expotentially as time passes in the level
-    float speed = (1/6000) * exp(sqrt(get_current_time() - game_state.lvl_start_time)) - 1; // magnitute of the unit vector
+    double speed = (s > 0.4 ? 0.4 : s); // magnitute of the unit vector. Expotential function of time clipped at 0.4 for an enjoyable expereince
 
-    Chaser.dy = speed;
+    Chaser.dy = speed; //TODO: REMOVE
 
-    // dx = speed * cos(theta);  to avoid constantly writing and reading the data I have choosen to just use the speed*cos(theta) definition of dx and dy. for efficiency.
-     if (Hero.x < Chaser.x ) Chaser.x -= speed * cos(theta); // So Jerry is to the left of current location 
-     else Chaser.x += speed * cos(theta); // Jerry is to the right of current location
+    
 
-     if (Hero.y < Chaser.y) Chaser.y -=  speed * sin(theta); // Jerry is above current location
-     else Chaser.y += speed *  sin(theta); // Jerry is below current location
+    // dx_step = speed * cos(theta);  to avoid constantly writing and reading the data I have choosen to just use the speed*cos(theta) definition of dx_step and dy_step. for efficiency.
+     if (Hero.x < Chaser.x ) next_x -= speed * cos(theta); // So Jerry is to the left of current location 
+     else next_x += speed * cos(theta); // Jerry is to the right of current location
+
+     if (Hero.y < Chaser.y) next_y -=  speed * sin(theta); // Jerry is above current location
+     else next_y += speed *  sin(theta); // Jerry is below current location
 
      //NEXT
         // check for wall collisions and bondary collisions
+        if (isValidLocation2(round(next_x), round(next_y)) && \
+        (next_x >= 0 && next_x <= width) && \
+        (next_y >= 4 && next_y <= (4 + height)))
+        {
+          Chaser.x = next_x;
+          Chaser.y = next_y;
+        }
+
             // store prevous step values and using a threshold see if last two values are exactly the same if yes than move in direction of greater change so if dx>dy than than a step in dx and vice verse 
             // if both are distances are equal than randomly chose a direction and take a step in that direction 
 }
@@ -984,35 +1005,76 @@ void level_up()
     }   
 }
 
+//TODO: ADD a description
+void save_current_state(struct game *current_state, struct game *stored_state)
+{
+    if (ActivePlayer == 'T') // So, currently playing as Jerry
+    {
+        stored_state->lives_at_swtich = Hero.lives;
+        stored_state->cheeseEaten = current_state->cheeseEaten;
+    }
+    else // so, currently playing as Tom
+    {
+        stored_state->lives_at_swtich = Chaser.lives;
+    }
+
+    stored_state->finalScore = current_state->finalScore;
+}
+
+// void restore_state()
+
+//TODO: ADD a description
+void restore_other_players_state()
+{
+    struct game Temp;
+    save_current_state(&game_state, &Temp);
+
+    // restore_state
+    if (ActivePlayer == 'T') //switching back to Jerry
+    {
+        Hero.lives = stored_state.lives_at_swtich;
+        game_state.cheeseEaten = stored_state.cheeseEaten;
+    }
+    else //switching to Tom
+    {
+        Chaser.lives = stored_state.lives_at_swtich;
+    }
+    
+    save_current_state(&Temp, &stored_state);
+
+    // // struct game Temp = game_state;
+    //     game_state = stored_state;
+    //     stored_state = Temp;
+
+    //     if (game_state.activePlayer == 'J')
+    //     {
+    //         Hero.lives = game_state.lives_at_swtich;
+    //         stored_state.lives_at_swtich = Chaser.lives;
+    //     }
+    //     else
+    //     {
+    //         Chaser.lives = game_state.lives_at_swtich;
+    //         stored_state.lives_at_swtich = Hero.lives;
+    //     } 
+}
+
+//TODO: ADD description
 void switch_players()
 {
+    playerSwitch = true;
     //change the active player to Tom 
     ActivePlayer = (ActivePlayer == 'J' ? 'T' : 'J');
 
-    if (!switched) // if switching first time 
+    if (!switchedBefore) // if switching first time 
     {
         //save the state of the game 
-        stored_state = game_state;// Store current state of the game for Jerry 
-        stored_state.lives_at_swtich = Hero.lives;
+        save_current_state(&game_state, &stored_state);
         initalise_game_state();// Initialised new game state
-        switched = true;
+        switchedBefore = true;
     }
     else 
     {
-        struct game Temp = game_state;
-        game_state = stored_state;
-        stored_state = Temp;
-
-        if (game_state.activePlayer == 'J')
-        {
-            Hero.lives = game_state.lives_at_swtich;
-            stored_state.lives_at_swtich = Chaser.lives;
-        }
-        else
-        {
-            Chaser.lives = game_state.lives_at_swtich;
-            stored_state.lives_at_swtich = Hero.lives;
-        } 
+        restore_other_players_state();
     } 
 }
 
@@ -1054,10 +1116,10 @@ void update_state(int key_code)
     {
         update_hero(key_code);
         update_chaser(key_code);
-        if(!game_state.gameOver) update_traps(key_code);
-        if(!game_state.gameOver) update_cheese(key_code);
-        if(!game_state.gameOver) update_fireworks(key_code);
-        update_door();
+        if (!game_state.gameOver) update_traps(key_code);
+        if (!game_state.gameOver) update_cheese(key_code);
+        if (!game_state.gameOver) update_fireworks(key_code);
+        if (ActivePlayer == 'J') update_door();
     }
 }
 
